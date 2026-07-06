@@ -35,8 +35,11 @@
   "statsVideos": "视频数",
   "noContent": "暂无内容",
   "modelNotConfigured": {
-    "before": "检测到尚未配置模型，请先前往",
+    "before": "暂无已配置的模型，请先前往",
     "link": "设置中心",
-    "after": "配置模型，或在创建项目后于项目配置中自定义。"
+    "after": "配置模型，或者在创建后的项目设置中按需自定义。"
+  },
+  "stages": {
+    "faceSwap": "角色重绘"
   }
 }

@@ -2,7 +2,7 @@
 import { logError as _ulogError } from '@/lib/logging/core'
 
 import { useState } from 'react'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { ART_STYLES } from '@/lib/constants'
 import { useAiDesignLocation, useCreateAssetHubLocation } from '@/lib/query/hooks'
 import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
@@ -28,6 +28,7 @@ const SparklesIcon = ({ className }: { className?: string }) => (
 
 export function AddLocationModal({ folderId, onClose, onSuccess }: AddLocationModalProps) {
     const t = useTranslations('assetHub')
+    const locale = useLocale()
 
     // 表单字段
     const [name, setName] = useState('')
@@ -167,7 +168,7 @@ export function AddLocationModal({ folderId, onClose, onSuccess }: AddLocationMo
                         {/* 风格选择 */}
                         <div className="space-y-2">
                             <label className="glass-field-label block">
-                                画面风格
+                                {locale === 'en' ? 'Art Style' : '画面风格'}
                             </label>
                             <div className="grid grid-cols-2 gap-2">
                                 {ART_STYLES.map((style) => (
@@ -180,7 +181,7 @@ export function AddLocationModal({ folderId, onClose, onSuccess }: AddLocationMo
                                             : 'glass-btn-soft border-[var(--glass-stroke-base)] text-[var(--glass-text-secondary)] hover:border-[var(--glass-stroke-strong)]'
                                             }`}
                                     >
-                                        <span>{style.label}</span>
+                                        <span>{locale === 'en' ? style.labelEn : style.label}</span>
                                     </button>
                                 ))}
                             </div>

@@ -138,6 +138,7 @@ export const ART_STYLES = [
   {
     value: 'american-comic',
     label: '漫画风',
+    labelEn: 'Comic Style',
     preview: '漫',
     promptZh: '日式动漫风格',
     promptEn: 'Japanese anime style'
@@ -145,6 +146,7 @@ export const ART_STYLES = [
   {
     value: 'chinese-comic',
     label: '精致国漫',
+    labelEn: 'Premium CN Comic',
     preview: '国',
     promptZh: '现代高质量漫画风格，动漫风格，细节丰富精致，线条锐利干净，质感饱满，超清，干净的画面风格，2D风格，动漫风格。',
     promptEn: 'Modern premium Chinese comic style, rich details, clean sharp line art, full texture, ultra-clear 2D anime aesthetics.'
@@ -152,6 +154,7 @@ export const ART_STYLES = [
   {
     value: 'japanese-anime',
     label: '日系动漫风',
+    labelEn: 'Japanese Anime',
     preview: '日',
     promptZh: '现代日系动漫风格，赛璐璐上色，清晰干净的线条，视觉小说CG感。高质量2D风格',
     promptEn: 'Modern Japanese anime style, cel shading, clean line art, visual-novel CG look, high-quality 2D style.'
@@ -159,6 +162,7 @@ export const ART_STYLES = [
   {
     value: 'realistic',
     label: '真人风格',
+    labelEn: 'Realistic Cinematic',
     preview: '实',
     promptZh: '真实电影级画面质感，真实现实场景，色彩饱满通透，画面干净精致，真实感',
     promptEn: 'Realistic cinematic look, real-world scene fidelity, rich transparent colors, clean and refined image quality.'
@@ -186,6 +190,87 @@ export function getArtStylePrompt(
   const style = ART_STYLES.find(s => s.value === artStyle)
   if (!style) return ''
   return locale === 'en' ? style.promptEn : style.promptZh
+}
+
+export const FBF_CHARACTER_SWAP_PROMPTS = [
+  {
+    value: 'face_swap',
+    label: '角色换脸',
+    labelEn: 'Character Face Swap',
+    promptZh: '将画面中的人物替换为目标参考图中的角色，保持原有动作、姿态、镜头角度和场景光照不变，面部特征与参考图一致。',
+    promptEn: 'Replace the person in the frame with the target reference character while preserving pose, motion, camera angle, and scene lighting. Match facial features to the reference image.',
+  },
+  {
+    value: 'full_character',
+    label: '全身角色替换',
+    labelEn: 'Full Character Replacement',
+    promptZh: '将画面中的人物完整替换为目标参考角色，保持动作连贯，服装与参考图一致，不改变背景与构图。',
+    promptEn: 'Fully replace the person in the frame with the target reference character, keeping motion coherent and outfit consistent with the reference, without changing background or composition.',
+  },
+  {
+    value: 'style_transfer',
+    label: '风格迁移',
+    labelEn: 'Style Transfer',
+    promptZh: '在保持画面构图和人物动作不变的前提下，将画面风格迁移为与参考图一致的画风与色调。',
+    promptEn: 'Transfer the visual style and color palette to match the reference image while preserving composition and character motion.',
+  },
+  {
+    value: 'custom',
+    label: '自定义',
+    labelEn: 'Custom',
+    promptZh: '',
+    promptEn: '',
+  },
+] as const
+
+export function getFbfPromptPreset(
+  preset: string,
+  locale: 'zh' | 'en',
+): string {
+  const item = FBF_CHARACTER_SWAP_PROMPTS.find((p) => p.value === preset)
+  if (!item || preset === 'custom') return ''
+  return locale === 'en' ? item.promptEn : item.promptZh
+}
+
+/** Gợi ý mô tả chuyển động cho chunk I2V (để trống = Gemini tự phân tích). */
+export const CHUNK_MOTION_PROMPT_PRESETS = [
+  {
+    value: 'auto',
+    label: 'Tự động (Gemini)',
+    labelEn: 'Auto (Gemini)',
+    promptZh: '',
+    promptEn: '',
+  },
+  {
+    value: 'preserve_motion',
+    label: 'Giữ chuyển động gốc',
+    labelEn: 'Preserve original motion',
+    promptZh: '主体保持与原视频完全一致的动作节奏与肢体语言，镜头运动与原片相同，画面连贯自然。',
+    promptEn: 'Subject performs the exact same body actions and timing as the source clip. Match the original camera movement. Smooth continuous motion throughout.',
+  },
+  {
+    value: 'subtle_motion',
+    label: 'Chuyển động nhẹ',
+    labelEn: 'Subtle motion',
+    promptZh: '主体有轻微自然的动作（呼吸、眨眼、小幅手势），镜头稳定，氛围连贯。',
+    promptEn: 'Subtle natural motion: breathing, blinking, small gestures. Stable camera. Calm continuous movement.',
+  },
+  {
+    value: 'custom',
+    label: 'Tùy chỉnh',
+    labelEn: 'Custom',
+    promptZh: '',
+    promptEn: '',
+  },
+] as const
+
+export function getChunkMotionPromptPreset(
+  preset: string,
+  locale: 'zh' | 'en',
+): string {
+  const item = CHUNK_MOTION_PROMPT_PRESETS.find((p) => p.value === preset)
+  if (!item || preset === 'auto' || preset === 'custom') return ''
+  return locale === 'en' ? item.promptEn : item.promptZh
 }
 
 // 角色形象生成的系统后缀（始终添加到提示词末尾，不显示给用户）- 左侧面部特写+右侧三视图

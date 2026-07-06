@@ -260,6 +260,11 @@ export interface NovelPromotionProject {
   audioUrl: string | null
   media?: MediaRef | null
   srtContent: string | null
+  importStatus?: string
+  fbfResultVideoUrl?: string | null
+  fbfResultVideoMedia?: MediaRef | null
+  chunkResultVideoUrl?: string | null
+  chunkResultVideoMedia?: MediaRef | null
   characters?: Character[]
   locations?: Location[]
   props?: Prop[]

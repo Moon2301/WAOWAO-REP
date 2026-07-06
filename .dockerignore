@@ -14,10 +14,21 @@ docker-compose.test.yml
 
 # 运行时数据
 logs
+docker-logs
+logs.txt
+logs2.txt
 data
 certificates
 backups
 uploads
+
+# 独立服务（有自己的 build context）与 Docker/Caddy 配置
+services
+docker-compose*.yml
+Dockerfile
+caddyfile.docker
+Caddyfile
+caddy-root.crt
 
 # IDE 和 AI 工具
 .vscode

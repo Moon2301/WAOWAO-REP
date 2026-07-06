@@ -11,8 +11,10 @@ interface VideoToolbarProps {
   failedCount: number
   isAnyTaskRunning: boolean
   isDownloading: boolean
+  isMerging?: boolean
   onGenerateAll: () => void
   onDownloadAll: () => void
+  onMergeVideos?: () => void
   onBack: () => void
   onEnterEditor?: () => void  // 进入剪辑器
   videosReady?: boolean  // 是否有视频可以剪辑
@@ -25,8 +27,10 @@ export default function VideoToolbar({
   failedCount,
   isAnyTaskRunning,
   isDownloading,
+  isMerging = false,
   onGenerateAll,
   onDownloadAll,
+  onMergeVideos,
   onBack,
   onEnterEditor,
   videosReady = false
@@ -98,6 +102,26 @@ export default function VideoToolbar({
               </>
             )}
           </button>
+          {onMergeVideos && (
+            <button
+              onClick={onMergeVideos}
+              disabled={videosWithUrl === 0 || isMerging}
+              className="glass-btn-base glass-btn-tone-info flex items-center gap-2 px-4 py-2 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              title={videosWithUrl === 0 ? t('toolbar.noVideos') : t('toolbar.mergeCount', { count: videosWithUrl })}
+            >
+              {isMerging ? (
+                <span className="flex items-center gap-1.5">
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  <span>{t('toolbar.mergingVideos')}</span>
+                </span>
+              ) : (
+                <>
+                  <AppIcon name="video" className="w-4 h-4" />
+                  <span>{t('toolbar.mergeVideos')}</span>
+                </>
+              )}
+            </button>
+          )}
           {onEnterEditor && (
             <button
               onClick={onEnterEditor}

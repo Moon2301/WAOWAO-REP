@@ -65,6 +65,9 @@
         "downloading": "Packing...",
         "noImages": "No images to download",
         "downloadAllImages": "Download all images",
+        "mergeVideos": "Merge Videos",
+        "mergingVideos": "Merging...",
+        "noVideos": "No videos to merge",
         "generateVideo": "Generate Video →",
         "back": "← Back",
         "concurrencyLimit": "Concurrency limit {count}"
@@ -249,7 +252,8 @@
         "addGroupFailed": "Add storyboard group failed: {error}",
         "moveGroupFailed": "Move storyboard group failed: {error}",
         "batchGenerateCompleted": "Batch generation completed:\nSucceeded: {succeeded}\nFailed: {failed}\n\nSample errors: {errors}",
-        "batchGenerateFailed": "Batch generation failed: {error}"
+        "batchGenerateFailed": "Batch generation failed: {error}",
+        "mergeVideosFailed": "Merge videos failed: {error}"
     },
     "canvas": {
         "emptyTitle": "No storyboard data yet",

@@ -4,7 +4,7 @@ import { getInternalBaseUrl } from '@/lib/env'
 import { getImageBase64Cached } from '@/lib/image-cache'
 import type { OpenAICompatClientConfig } from '../types'
 
-function toAbsoluteUrlIfNeeded(value: string): string {
+export function toAbsoluteUrlIfNeeded(value: string): string {
   if (!value.startsWith('/')) return value
   const baseUrl = getInternalBaseUrl()
   return `${baseUrl}${value}`
@@ -70,4 +70,19 @@ export async function toUploadFile(imageSource: string, index: number): Promise<
 
   const bytes = Buffer.from(imageSource, 'base64')
   return await toFile(bytes, `reference-${index}.png`, { type: 'image/png' })
+}
+
+export async function toDataUrl(imageSource: string): Promise<string> {
+  const parsedDataUrl = parseDataUrl(imageSource)
+  if (parsedDataUrl) return imageSource
+
+  if (imageSource.startsWith('http://') || imageSource.startsWith('https://') || imageSource.startsWith('/')) {
+    const cachedDataUrl = await getImageBase64Cached(toAbsoluteUrlIfNeeded(imageSource))
+    if (!cachedDataUrl) {
+      throw new Error(`OPENAI_COMPAT_REFERENCE_INVALID: failed to fetch image source`)
+    }
+    return cachedDataUrl
+  }
+
+  return `data:image/png;base64,${imageSource}`
 }

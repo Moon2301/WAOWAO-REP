@@ -19,6 +19,8 @@ export function useSSE({ projectId, episodeId, enabled = true, onEvent }: UseSSE
   const queryClient = useQueryClient()
   const sourceRef = useRef<EventSource | null>(null)
   const targetStatesInvalidateTimerRef = useRef<number | null>(null)
+  const onEventRef = useRef(onEvent)
+  onEventRef.current = onEvent
   const isGlobalAssetProject = projectId === 'global-asset-hub'
 
   const url = useMemo(() => {
@@ -95,7 +97,7 @@ export function useSSE({ projectId, episodeId, enabled = true, onEvent }: UseSSE
       try {
         const payload = JSON.parse(event.data || '{}')
         if (!payload || !payload.type) return
-        onEvent?.(payload as SSEEvent)
+        onEventRef.current?.(payload as SSEEvent)
         const eventType = payload.type as string
         const targetType = typeof payload.targetType === 'string'
           ? payload.targetType
@@ -221,7 +223,7 @@ export function useSSE({ projectId, episodeId, enabled = true, onEvent }: UseSSE
       source.close()
       sourceRef.current = null
     }
-  }, [enabled, url, projectId, episodeId, queryClient, isGlobalAssetProject, onEvent])
+  }, [enabled, url, projectId, episodeId, queryClient, isGlobalAssetProject])
 
   return {
     connected: !!sourceRef.current && sourceRef.current.readyState === EventSource.OPEN,

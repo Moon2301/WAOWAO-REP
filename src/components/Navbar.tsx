@@ -118,6 +118,13 @@ export default function Navbar() {
                     {t('assetHub')}
                   </Link>
                   <Link
+                    href={{ pathname: '/frame-editor' }}
+                    className="text-sm text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] font-medium transition-colors flex items-center gap-1"
+                  >
+                    <AppIcon name="sparkles" className="w-4 h-4" />
+                    Frame Editor
+                  </Link>
+                  <Link
                     href={{ pathname: '/profile' }}
                     className="text-sm text-[var(--glass-text-secondary)] hover:text-[var(--glass-text-primary)] font-medium transition-colors flex items-center gap-1"
                     title={t('profile')}

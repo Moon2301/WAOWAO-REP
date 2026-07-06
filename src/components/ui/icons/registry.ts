@@ -72,6 +72,9 @@ import {
   WandSparkles,
   X,
   Zap,
+  Terminal,
+  Code,
+  SquareTerminal,
 } from 'lucide-react'
 import { customIcons } from './custom'
 
@@ -186,6 +189,9 @@ export const iconRegistry = {
   film: Film,
   folderOpen: FolderOpen,
   gripVertical: GripVertical,
+  terminal: Terminal,
+  code: Code,
+  squareTerminal: SquareTerminal,
 } as const satisfies Record<string, LucideIcon>
 
 export type AppIconName = keyof typeof iconRegistry

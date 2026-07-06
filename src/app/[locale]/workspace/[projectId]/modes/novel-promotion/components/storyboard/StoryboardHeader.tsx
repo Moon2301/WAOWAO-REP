@@ -9,10 +9,12 @@ interface StoryboardHeaderProps {
   totalSegments: number
   totalPanels: number
   isDownloadingImages: boolean
+  isMergingVideos: boolean
   runningCount: number
   pendingPanelCount: number
   isBatchSubmitting: boolean
   onDownloadAllImages: () => void
+  onMergeVideos: () => void
   onGenerateAllPanels: () => void
   onBack: () => void
 }
@@ -21,10 +23,12 @@ export default function StoryboardHeader({
   totalSegments,
   totalPanels,
   isDownloadingImages,
+  isMergingVideos,
   runningCount,
   pendingPanelCount,
   isBatchSubmitting,
   onDownloadAllImages,
+  onMergeVideos,
   onGenerateAllPanels,
   onBack
 }: StoryboardHeaderProps) {
@@ -81,6 +85,15 @@ export default function StoryboardHeader({
           disabled={totalPanels === 0}
         >
           {isDownloadingImages ? t('header.downloading') : t('header.downloadAll')}
+        </GlassButton>
+
+        <GlassButton
+          variant="secondary"
+          loading={isMergingVideos}
+          onClick={onMergeVideos}
+          disabled={totalPanels === 0}
+        >
+          {isMergingVideos ? t('header.mergingVideos') : t('header.mergeVideos')}
         </GlassButton>
 
         <GlassButton variant="ghost" onClick={onBack}>{t('header.back')}</GlassButton>

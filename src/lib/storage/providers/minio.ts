@@ -1,4 +1,5 @@
-import type { DeleteObjectsResult, SignedUrlParams, StorageProvider, UploadObjectParams, UploadObjectResult } from '@/lib/storage/types'
+import { Readable } from 'node:stream'
+import type { DeleteObjectsResult, ObjectStreamParams, ObjectStreamResult, SignedUrlParams, StorageProvider, UploadObjectParams, UploadObjectResult } from '@/lib/storage/types'
 import { requireEnv, streamToBuffer, toFetchableUrl } from '@/lib/storage/utils'
 
 const DEFAULT_MINIO_REGION = 'us-east-1'
@@ -135,10 +136,45 @@ export class MinioStorageProvider implements StorageProvider {
     return await streamToBuffer(result.Body)
   }
 
+  async getObjectStream(params: ObjectStreamParams): Promise<ObjectStreamResult> {
+    const sdk = await this.loadSdk()
+    const client = await this.getClient()
+    const result = await client.send(new sdk.GetObjectCommand({
+      Bucket: this.bucket,
+      Key: params.key,
+      ...(params.range ? { Range: params.range } : {}),
+    })) as {
+      Body?: unknown
+      ContentType?: string
+      ContentLength?: number
+      ContentRange?: string
+    }
+
+    if (!result.Body) {
+      throw new Error(`Empty body for storage key: ${params.key}`)
+    }
+
+    const body = result.Body as { transformToWebStream?: () => ReadableStream<Uint8Array> }
+    const webStream = typeof body.transformToWebStream === 'function'
+      ? body.transformToWebStream()
+      : Readable.toWeb(result.Body as Readable) as ReadableStream<Uint8Array>
+
+    return {
+      body: webStream,
+      status: result.ContentRange ? 206 : 200,
+      contentType: result.ContentType,
+      contentLength: result.ContentLength,
+      contentRange: result.ContentRange,
+    }
+  }
+
   extractStorageKey(input: string | null | undefined): string | null {
     if (!input) return null
 
     if (!input.startsWith('http') && !input.startsWith('/')) {
+      if (/(?:^|\/)api\/storage\/sign(?:\?|$)/.test(input)) {
+        return null
+      }
       return input
     }
 

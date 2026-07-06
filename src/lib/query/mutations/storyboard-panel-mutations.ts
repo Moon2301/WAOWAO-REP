@@ -324,3 +324,23 @@ export function useClearProjectStoryboardError(projectId: string) {
         },
     })
 }
+
+/**
+ * 合并剧集全部视频（mp4）
+ */
+export function useMergeProjectVideos(projectId: string) {
+    return useMutation({
+        mutationFn: async ({ episodeId }: { episodeId: string }) => {
+            const response = await apiFetch(`/api/novel-promotion/${projectId}/merge-videos`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ episodeId }),
+            })
+            if (!response.ok) {
+                const error = await response.json().catch(() => ({}))
+                throw new Error(resolveTaskErrorMessage(error, '视频合并失败'))
+            }
+            return response.blob()
+        },
+    })
+}

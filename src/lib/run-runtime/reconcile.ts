@@ -3,6 +3,11 @@ import { prisma } from '@/lib/prisma'
 import { TASK_STATUS } from '@/lib/task/types'
 import { RUN_STATUS, RUN_STEP_STATUS } from './types'
 
+const RUN_RUNTIME_TX_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 30_000,
+} as const
+
 const ACTIVE_RUN_STATUSES = [
   RUN_STATUS.QUEUED,
   RUN_STATUS.RUNNING,
@@ -156,7 +161,7 @@ export async function reconcileActiveRunsFromTasks(limit = 200): Promise<Reconci
         },
       })
       return true
-    })
+    }, RUN_RUNTIME_TX_OPTIONS)
     if (settled) {
       reconciled.push({
         runId: run.id,
@@ -240,7 +245,7 @@ export async function reconcileActiveRunsFromTasks(limit = 200): Promise<Reconci
           },
         })
         return true
-      })
+      }, RUN_RUNTIME_TX_OPTIONS)
 
       if (settled) {
         reconciled.push({
@@ -289,7 +294,7 @@ export async function reconcileActiveRunsFromTasks(limit = 200): Promise<Reconci
         },
       })
       return true
-    })
+    }, RUN_RUNTIME_TX_OPTIONS)
 
     if (settled) {
       reconciled.push({

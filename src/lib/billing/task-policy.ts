@@ -9,6 +9,7 @@ import {
 import { BillingOperationError } from './errors'
 import { BUILTIN_PRICING_VERSION } from '@/lib/model-pricing/version'
 import { TASK_TYPE, type TaskType } from '@/lib/task/types'
+import { snapVideoDurationForModel } from '@/lib/model-capabilities/video-duration-snap'
 import type { TaskBillingInfo } from './types'
 
 type AnyPayload = Record<string, unknown> | null | undefined
@@ -18,6 +19,7 @@ const BILLABLE_TASK_TYPES = new Set<TaskType>([
   TASK_TYPE.IMAGE_CHARACTER,
   TASK_TYPE.IMAGE_LOCATION,
   TASK_TYPE.VIDEO_PANEL,
+  TASK_TYPE.VIDEO_CHARACTER_SWAP_CHUNK,
   TASK_TYPE.LIP_SYNC,
   TASK_TYPE.VOICE_LINE,
   TASK_TYPE.VOICE_DESIGN,
@@ -151,7 +153,8 @@ function buildImageTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillin
 
 function buildVideoTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillingInfo | null {
   const firstLastFramePayload = toRecord(payload?.firstLastFrame)
-  const generationMode = Object.keys(firstLastFramePayload).length > 0 ? 'firstlastframe' : 'normal'
+  const generationMode = readString(payload?.generationMode)
+    || (Object.keys(firstLastFramePayload).length > 0 ? 'firstlastframe' : 'normal')
   const model = pickFirstString([
     payload?.videoModel,
     payload?.modelId,
@@ -161,7 +164,12 @@ function buildVideoTaskInfo(taskType: TaskType, payload: AnyPayload): TaskBillin
   if (!model) return null
   const generationOptions = toRecord(payload?.generationOptions)
   const resolution = readString(generationOptions.resolution) || readString(payload?.resolution)
-  const duration = readNumber(generationOptions.duration) ?? readNumber(payload?.duration)
+  const rawDuration = readNumber(generationOptions.duration)
+    ?? readNumber(payload?.duration)
+    ?? readNumber(payload?.baseChunkDuration)
+  const duration = typeof rawDuration === 'number'
+    ? snapVideoDurationForModel(model, rawDuration)
+    : undefined
   const aspectRatio = readString(generationOptions.aspectRatio) || readString(payload?.aspectRatio)
   const generateAudio = typeof generationOptions.generateAudio === 'boolean'
     ? generationOptions.generateAudio
@@ -252,6 +260,7 @@ export function buildDefaultTaskBillingInfo(taskType: TaskType, payload: AnyPayl
     case TASK_TYPE.ASSET_HUB_MODIFY:
       return buildImageTaskInfo(taskType, payload)
     case TASK_TYPE.VIDEO_PANEL:
+    case TASK_TYPE.VIDEO_CHARACTER_SWAP_CHUNK:
       return buildVideoTaskInfo(taskType, payload)
     case TASK_TYPE.LIP_SYNC: {
       const lipSyncModel = pickFirstString([payload?.lipSyncModel]) || 'kling'

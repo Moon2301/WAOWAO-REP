@@ -1,12 +1,16 @@
-import { logInfo as _ulogInfo } from '@/lib/logging/core'
 import { NextRequest } from 'next/server'
-import { getSignedUrl, toFetchableUrl } from '@/lib/storage'
+import { getObjectStream, guessContentTypeFromKey } from '@/lib/storage'
 import { requireProjectAuthLight, isErrorResponse } from '@/lib/api-auth'
 import { apiHandler, ApiError } from '@/lib/api-errors'
 
+export const runtime = 'nodejs'
+
 /**
- * 代理下载单个视频文件
- * 用于解决 COS 跨域下载问题
+ * Proxy video từ storage cho browser (hỗ trợ Range để seek).
+ *
+ * Trước đây route này tự fetch lại chính app qua HTTP
+ * (http://127.0.0.1:3000/api/storage/sign?...) → ECONNREFUSED khi app
+ * bind hostname khác / đang khởi động. Giờ đọc thẳng từ storage.
  */
 export const GET = apiHandler(async (
     request: NextRequest,
@@ -20,37 +24,50 @@ export const GET = apiHandler(async (
         throw new ApiError('INVALID_PARAMS')
     }
 
-    // 🔐 统一权限验证
     const authResult = await requireProjectAuthLight(projectId)
     if (isErrorResponse(authResult)) return authResult
 
-    // 生成签名 URL 并下载
-    let fetchUrl: string
+    const range = request.headers.get('range') || undefined
+
+    // URL ngoài (kết quả provider chưa lưu về storage) → fetch qua HTTP
     if (videoKey.startsWith('http://') || videoKey.startsWith('https://')) {
-        fetchUrl = videoKey
-    } else {
-        fetchUrl = toFetchableUrl(getSignedUrl(videoKey, 3600))
+        const response = await fetch(videoKey, {
+            headers: range ? { Range: range } : undefined,
+        })
+        if (!response.ok) {
+            throw new Error(`Failed to fetch video: ${response.statusText}`)
+        }
+        const headers = new Headers()
+        headers.set('Content-Type', response.headers.get('content-type') || 'video/mp4')
+        headers.set('Cache-Control', 'no-cache')
+        const contentLength = response.headers.get('content-length')
+        const contentRange = response.headers.get('content-range')
+        if (contentLength) headers.set('Content-Length', contentLength)
+        if (contentRange) headers.set('Content-Range', contentRange)
+        headers.set('Accept-Ranges', 'bytes')
+        return new Response(response.body, {
+            status: response.status === 206 ? 206 : 200,
+            headers,
+        })
     }
 
-    _ulogInfo(`[视频代理] 下载: ${fetchUrl.substring(0, 100)}...`)
-
-    const response = await fetch(fetchUrl)
-    if (!response.ok) {
-        throw new Error(`Failed to fetch video: ${response.statusText}`)
-    }
-
-    // 获取内容类型和长度
-    const contentType = response.headers.get('content-type') || 'video/mp4'
-    const contentLength = response.headers.get('content-length')
-
-    // 流式返回视频数据
-    const headers: HeadersInit = {
-        'Content-Type': contentType,
-        'Cache-Control': 'no-cache'
-    }
-    if (contentLength) {
-        headers['Content-Length'] = contentLength
-    }
-
-    return new Response(response.body, { headers })
+    return await streamFromStorage(videoKey.replace(/^\/+/, ''), range)
 })
+
+async function streamFromStorage(key: string, range?: string): Promise<Response> {
+    let stream
+    try {
+        stream = await getObjectStream(key, range)
+    } catch {
+        throw new ApiError('NOT_FOUND', { message: `Video not found: ${key.substring(0, 120)}` })
+    }
+
+    const headers = new Headers()
+    headers.set('Content-Type', stream.contentType || guessContentTypeFromKey(key) || 'video/mp4')
+    headers.set('Cache-Control', 'private, max-age=3600')
+    headers.set('Accept-Ranges', 'bytes')
+    if (stream.contentLength !== undefined) headers.set('Content-Length', String(stream.contentLength))
+    if (stream.contentRange) headers.set('Content-Range', stream.contentRange)
+
+    return new Response(stream.body, { status: stream.status, headers })
+}

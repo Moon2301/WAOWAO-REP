@@ -49,6 +49,14 @@ const TASK_TYPE_OWNER_MAP = {
   [TASK_TYPE.ASSET_HUB_AI_MODIFY_LOCATION]: 'tests/unit/worker/asset-hub-ai-modify.test.ts',
   [TASK_TYPE.ASSET_HUB_AI_MODIFY_PROP]: 'tests/unit/helpers/prop-modify-task-registration.test.ts',
   [TASK_TYPE.ASSET_HUB_REFERENCE_TO_CHARACTER]: 'tests/unit/worker/reference-to-character.test.ts',
+  [TASK_TYPE.PANEL_CHARACTER_SWAP]: 'tests/unit/worker/panel-character-swap.test.ts',
+  [TASK_TYPE.VIDEO_CHARACTER_SWAP]: 'tests/unit/worker/video-character-swap.test.ts',
+  [TASK_TYPE.VIDEO_CHARACTER_SWAP_CHUNK]: 'tests/unit/worker/video-character-swap.test.ts',
+  [TASK_TYPE.VIDEO_CHARACTER_SWAP_MERGE]: 'tests/unit/worker/video-character-swap.test.ts',
+  [TASK_TYPE.VIDEO_FRAME_EXTRACT]: 'tests/unit/worker/video-frame-extract.test.ts',
+  [TASK_TYPE.VIDEO_FRAME_PROCESS]: 'tests/unit/worker/video-frame-process.test.ts',
+  [TASK_TYPE.VIDEO_FRAME_MERGE]: 'tests/unit/worker/video-frame-merge.test.ts',
+  [TASK_TYPE.VIDEO_FRAME_CLASSIFY]: 'tests/unit/worker/video-frame-classify.test.ts',
 } as const satisfies Record<TaskType, string>
 
 export const TASK_TYPE_CATALOG: ReadonlyArray<TaskTypeCoverageEntry> = (Object.values(TASK_TYPE) as TaskType[])

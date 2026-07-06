@@ -1,7 +1,7 @@
 import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
 import type { GenerateResult } from '@/lib/generators/base'
 import type { OpenAICompatVideoRequest } from '../types'
-import { createOpenAICompatClient, parseDataUrl, resolveOpenAICompatClientConfig } from './common'
+import { createOpenAICompatClient, parseDataUrl, resolveOpenAICompatClientConfig, toDataUrl } from './common'
 import { toFile } from 'openai'
 
 type OpenAIVideoSize = '720x1280' | '1280x720' | '1024x1792' | '1792x1024'
@@ -167,14 +167,49 @@ export async function generateVideoViaOpenAICompat(request: OpenAICompatVideoReq
     throw new Error('OPENAI_COMPAT_VIDEO_PROMPT_REQUIRED')
   }
 
-  const inputReference = await toUploadFileFromImageUrl(imageUrl)
-  const response = await client.videos.create({
-    prompt: trimmedPrompt,
-    model: selectedModelId,
-    ...(seconds ? { seconds } : {}),
-    ...(size ? { size } : {}),
-    input_reference: inputReference,
-  } as Parameters<typeof client.videos.create>[0])
+  const isOpenRouter = providerId.toLowerCase().includes('openrouter')
+  let response: { id?: string }
+
+  if (isOpenRouter) {
+    let input_references: Array<{ type: string; image_url: { url: string } }> | undefined
+    if (imageUrl) {
+      input_references = [{
+        type: 'image_url',
+        image_url: { url: await toDataUrl(imageUrl) }
+      }]
+    }
+
+    const reqBody = {
+      model: selectedModelId,
+      prompt: trimmedPrompt,
+      ...(seconds ? { duration: parseInt(seconds, 10) } : {}),
+      ...(options.aspectRatio ? { aspect_ratio: options.aspectRatio } : {}),
+      ...(size ? { resolution: size } : {}),
+      ...(input_references ? { input_references } : {}),
+    }
+
+    const res = await fetch(`${config.baseUrl.replace(/\/$/, '')}/videos`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(reqBody),
+    })
+    if (!res.ok) {
+      throw new Error(`OpenRouter Video API failed: ${res.status} ${await res.text()}`)
+    }
+    response = await res.json()
+  } else {
+    const inputReference = await toUploadFileFromImageUrl(imageUrl)
+    response = await client.videos.create({
+      prompt: trimmedPrompt,
+      model: selectedModelId,
+      ...(seconds ? { seconds } : {}),
+      ...(size ? { size } : {}),
+      input_reference: inputReference,
+    } as Parameters<typeof client.videos.create>[0]) as { id?: string }
+  }
 
   if (!response.id || typeof response.id !== 'string') {
     throw new Error('OPENAI_COMPAT_VIDEO_CREATE_INVALID_RESPONSE: missing video id')

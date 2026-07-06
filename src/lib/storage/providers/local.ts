@@ -1,6 +1,8 @@
 import fs from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
+import { Readable } from 'node:stream'
 import path from 'node:path'
-import type { DeleteObjectsResult, SignedUrlParams, StorageProvider, UploadObjectParams, UploadObjectResult } from '@/lib/storage/types'
+import type { DeleteObjectsResult, ObjectStreamParams, ObjectStreamResult, SignedUrlParams, StorageProvider, UploadObjectParams, UploadObjectResult } from '@/lib/storage/types'
 import { normalizeKey, toFetchableUrl } from '@/lib/storage/utils'
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || './data/uploads'
@@ -55,6 +57,39 @@ export class LocalStorageProvider implements StorageProvider {
 
   async getObjectBuffer(key: string): Promise<Buffer> {
     return await fs.readFile(resolveUploadPath(key))
+  }
+
+  async getObjectStream(params: ObjectStreamParams): Promise<ObjectStreamResult> {
+    const filePath = resolveUploadPath(params.key)
+    const stat = await fs.stat(filePath)
+
+    let start = 0
+    let end = stat.size - 1
+    let status: 200 | 206 = 200
+    let contentRange: string | undefined
+
+    if (params.range) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(params.range.trim())
+      if (match && (match[1] || match[2])) {
+        start = match[1] ? Number.parseInt(match[1], 10) : Math.max(0, stat.size - Number.parseInt(match[2], 10))
+        end = match[1] && match[2] ? Math.min(Number.parseInt(match[2], 10), stat.size - 1) : end
+        if (start <= end && start < stat.size) {
+          status = 206
+          contentRange = `bytes ${start}-${end}/${stat.size}`
+        } else {
+          start = 0
+          end = stat.size - 1
+        }
+      }
+    }
+
+    const nodeStream = createReadStream(filePath, { start, end })
+    return {
+      body: Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>,
+      status,
+      contentLength: end - start + 1,
+      contentRange,
+    }
   }
 
   extractStorageKey(input: string | null | undefined): string | null {

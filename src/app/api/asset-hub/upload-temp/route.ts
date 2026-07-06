@@ -14,30 +14,42 @@ export const POST = apiHandler(async (request: NextRequest) => {
     if (isErrorResponse(authResult)) return authResult
     const { session } = authResult
 
-    const body = await request.json()
-    const { imageBase64, base64, extension } = body
-
-    // 支持两种调用方式：
-    // 1. 图片模式：{ imageBase64: "data:image/..." }
-    // 2. 通用模式：{ base64: "...", type: "audio/wav", extension: "wav" }
-
+    const contentType = request.headers.get('content-type') || ''
+    
     let buffer: Buffer
     let ext: string
 
-    if (imageBase64) {
-        // 图片模式
-        const matches = imageBase64.match(/^data:image\/(\w+);base64,(.+)$/)
-        if (!matches) {
+    if (contentType.includes('multipart/form-data')) {
+        const formData = await request.formData()
+        const file = formData.get('file') as File | null
+        if (!file) throw new ApiError('INVALID_PARAMS')
+        
+        buffer = Buffer.from(await file.arrayBuffer())
+        const nameParts = file.name.split('.')
+        ext = nameParts.length > 1 ? nameParts.pop()! : 'bin'
+    } else {
+        const body = await request.json()
+        const { imageBase64, base64, extension } = body
+
+        // 支持两种调用方式：
+        // 1. 图片模式：{ imageBase64: "data:image/..." }
+        // 2. 通用模式：{ base64: "...", type: "audio/wav", extension: "wav" }
+
+        if (imageBase64) {
+            // 图片模式
+            const matches = imageBase64.match(/^data:image\/(\w+);base64,(.+)$/)
+            if (!matches) {
+                throw new ApiError('INVALID_PARAMS')
+            }
+            ext = matches[1] === 'jpeg' ? 'jpg' : matches[1]
+            buffer = Buffer.from(matches[2], 'base64')
+        } else if (base64 && extension) {
+            // 通用模式（音频等）
+            buffer = Buffer.from(base64, 'base64')
+            ext = extension
+        } else {
             throw new ApiError('INVALID_PARAMS')
         }
-        ext = matches[1] === 'jpeg' ? 'jpg' : matches[1]
-        buffer = Buffer.from(matches[2], 'base64')
-    } else if (base64 && extension) {
-        // 通用模式（音频等）
-        buffer = Buffer.from(base64, 'base64')
-        ext = extension
-    } else {
-        throw new ApiError('INVALID_PARAMS')
     }
 
     // 上传到 COS

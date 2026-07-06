@@ -205,6 +205,8 @@ async function attachMediaFieldsToVoiceLine<T extends Record<string, unknown>>(l
 
 export async function attachMediaFieldsToProject<T extends Record<string, unknown>>(projectLike: T) {
   const audioMedia = await resolveMediaRef(projectLike.audioMediaId, projectLike.audioUrl)
+  const fbfResultVideoMedia = await resolveMediaRef(projectLike.fbfResultVideoMediaId, null)
+  const chunkResultVideoMedia = await resolveMediaRef(projectLike.chunkResultVideoMediaId, null)
   const characters = await Promise.all(
     ((projectLike.characters as Array<Record<string, unknown>>) || []).map(attachMediaFieldsToProjectCharacter),
   )
@@ -229,6 +231,10 @@ export async function attachMediaFieldsToProject<T extends Record<string, unknow
     media: audioMedia,
     audioMedia,
     audioUrl: audioMedia?.url || projectLike.audioUrl || null,
+    fbfResultVideoMedia,
+    fbfResultVideoUrl: fbfResultVideoMedia?.url || null,
+    chunkResultVideoMedia,
+    chunkResultVideoUrl: chunkResultVideoMedia?.url || null,
     characters,
     locations,
     props,

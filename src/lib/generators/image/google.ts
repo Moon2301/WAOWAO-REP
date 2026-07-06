@@ -8,14 +8,20 @@ import { logInfo as _ulogInfo, logWarn as _ulogWarn } from '@/lib/logging/core'
  * - Imagen 4
  */
 
-import { GoogleGenAI, HarmCategory, HarmBlockThreshold } from '@google/genai'
+import { GoogleGenAI, HarmCategory, HarmBlockThreshold, RawReferenceImage, SubjectReferenceImage, SubjectReferenceType } from '@google/genai'
 import { getInternalBaseUrl } from '@/lib/env'
 import { BaseImageGenerator, ImageGenerateParams, GenerateResult } from '../base'
 import { getProviderConfig } from '@/lib/api-config'
 import { getImageBase64Cached } from '@/lib/image-cache'
 import { setProxy } from '../../../../lib/prompts/proxy'
+import { resolveGoogleApiImage } from './google-image-utils'
 
 type ContentPart = { inlineData: { mimeType: string; data: string } } | { text: string }
+
+/** Imagen edit API model (supports reference-based editing). */
+const IMAGEN_EDIT_MODEL = 'imagen-3.0-capability-001'
+/** Fallback when editImage is unavailable — Gemini multimodal image generation. */
+const GEMINI_IMAGE_FALLBACK_MODEL = 'gemini-2.5-flash-image-preview'
 
 interface ImagenResponse {
     generatedImages?: Array<{
@@ -188,7 +194,7 @@ export class GoogleImagenGenerator extends BaseImageGenerator {
     }
 
     protected async doGenerate(params: ImageGenerateParams): Promise<GenerateResult> {
-        const { userId, prompt, options = {} } = params
+        const { userId, prompt, referenceImages = [], options = {} } = params
 
         const { apiKey } = await getProviderConfig(userId, 'google')
         const {
@@ -198,18 +204,30 @@ export class GoogleImagenGenerator extends BaseImageGenerator {
         await setProxy()
         const ai = new GoogleGenAI({ apiKey })
 
+        if (referenceImages.length > 0) {
+            try {
+                return await this.generateWithReferences(ai, prompt, referenceImages, aspectRatio)
+            } catch (error) {
+                _ulogWarn('[Imagen] editImage failed, falling back to Gemini image model:', error)
+                const gemini = new GoogleGeminiImageGenerator(GEMINI_IMAGE_FALLBACK_MODEL)
+                const fallback = await gemini.generate(params)
+                if (!fallback.success) {
+                    throw new Error(fallback.error || 'Gemini image fallback failed')
+                }
+                return fallback
+            }
+        }
+
         try {
-            // 使用 Imagen API（不同于 Gemini generateContent）
             const response = await ai.models.generateImages({
                 model: this.modelId,
                 prompt,
                 config: {
                     numberOfImages: 1,
                     ...(aspectRatio ? { aspectRatio } : {}),
-                }
+                },
             })
 
-            // 提取图片
             const generatedImages = (response as ImagenResponse).generatedImages
             if (generatedImages && generatedImages.length > 0) {
                 const imageBytes = generatedImages[0].image?.imageBytes
@@ -217,7 +235,7 @@ export class GoogleImagenGenerator extends BaseImageGenerator {
                     return {
                         success: true,
                         imageBase64: imageBytes,
-                        imageUrl: `data:image/png;base64,${imageBytes}`
+                        imageUrl: `data:image/png;base64,${imageBytes}`,
                     }
                 }
             }
@@ -225,12 +243,62 @@ export class GoogleImagenGenerator extends BaseImageGenerator {
             throw new Error('Imagen 未返回图片')
         } catch (error: unknown) {
             const message = getErrorMessage(error)
-            // 检查安全过滤
             if (message.includes('SAFETY') || message.includes('blocked')) {
                 throw new Error('内容因安全策略被过滤')
             }
             throw error
         }
+    }
+
+    private async generateWithReferences(
+        ai: GoogleGenAI,
+        prompt: string,
+        referenceImages: string[],
+        aspectRatio?: string,
+    ): Promise<GenerateResult> {
+        const sceneImage = await resolveGoogleApiImage(referenceImages[0])
+        const rawRef = new RawReferenceImage()
+        rawRef.referenceId = 1
+        rawRef.referenceImage = sceneImage
+
+        const refList: Array<RawReferenceImage | SubjectReferenceImage> = [rawRef]
+
+        if (referenceImages.length >= 2) {
+            const subjectImage = await resolveGoogleApiImage(referenceImages[1])
+            const subjectRef = new SubjectReferenceImage()
+            subjectRef.referenceId = 2
+            subjectRef.referenceImage = subjectImage
+            subjectRef.config = { subjectType: SubjectReferenceType.SUBJECT_TYPE_PERSON }
+            refList.push(subjectRef)
+        }
+
+        const editPrompt = referenceImages.length >= 2
+            ? `${prompt}\n\nEdit image [1]: replace the main person with the identity from subject reference [2]. Preserve pose, composition, camera angle, background, and lighting exactly.`
+            : `${prompt}\n\nEdit image [1] according to the instruction above.`
+
+        const response = await ai.models.editImage({
+            model: IMAGEN_EDIT_MODEL,
+            prompt: editPrompt,
+            referenceImages: refList,
+            config: {
+                numberOfImages: 1,
+                ...(aspectRatio ? { aspectRatio } : {}),
+            },
+        })
+
+        const generatedImages = response.generatedImages
+        if (generatedImages && generatedImages.length > 0) {
+            const imageBytes = generatedImages[0].image?.imageBytes
+            if (imageBytes) {
+                return {
+                    success: true,
+                    imageBase64: imageBytes,
+                    imageUrl: `data:image/png;base64,${imageBytes}`,
+                }
+            }
+        }
+
+        throw new Error('Imagen editImage 未返回图片')
     }
 }
 

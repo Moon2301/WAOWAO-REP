@@ -4,6 +4,7 @@ import {
   isFirstLastFrameOnlyModel,
   supportsFirstLastFrame,
 } from '@/lib/model-capabilities/video-model-options'
+import { snapVideoDurationForModel } from '@/lib/model-capabilities/video-duration-snap'
 import type { VideoModelOption } from '@/lib/novel-promotion/stages/video-stage-runtime/types'
 
 describe('video model options partition', () => {
@@ -63,5 +64,13 @@ describe('video model options partition', () => {
       'p::both',
       'p::custom-no-capability',
     ])
+  })
+
+  it('snaps duration to the smallest supported tier for Veo models', () => {
+    const modelKey = 'google::veo-3.1-fast-generate-preview'
+    expect(snapVideoDurationForModel(modelKey, 3.068752999999999)).toBe(4)
+    expect(snapVideoDurationForModel(modelKey, 5)).toBe(6)
+    expect(snapVideoDurationForModel(modelKey, 7)).toBe(8)
+    expect(snapVideoDurationForModel(modelKey, 4)).toBe(4)
   })
 })

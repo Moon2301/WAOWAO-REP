@@ -67,7 +67,7 @@ function normalizeProviderBaseUrl(providerId: string, rawBaseUrl?: string): stri
 
   const baseUrl = readTrimmedString(rawBaseUrl)
   if (!baseUrl) return undefined
-  if (providerKey !== 'openai-compatible') return baseUrl
+  if (providerKey !== 'openai-compatible' && providerKey !== 'openrouter') return baseUrl
 
   try {
     const parsed = new URL(baseUrl)
@@ -169,10 +169,10 @@ function parseCustomProviders(rawProviders: string | null | undefined): CustomPr
       gatewayRoute = undefined
     } else if (!isGatewayRoute(gatewayRouteRaw)) {
       throw new Error(`PROVIDER_GATEWAY_ROUTE_INVALID: providers[${index}].gatewayRoute`)
-    } else if (providerKey === 'openai-compatible' && gatewayRouteRaw === 'official') {
-      throw new Error(`PROVIDER_GATEWAY_ROUTE_INVALID: providers[${index}].gatewayRoute`)
-    } else if (providerKey !== 'openai-compatible' && gatewayRouteRaw === 'openai-compat') {
-      throw new Error(`PROVIDER_GATEWAY_ROUTE_INVALID: providers[${index}].gatewayRoute`)
+    } else if ((providerKey === 'openai-compatible' || providerKey === 'openrouter') && gatewayRouteRaw === 'official') {
+      gatewayRoute = 'openai-compat'
+    } else if (providerKey !== 'openai-compatible' && providerKey !== 'openrouter' && gatewayRouteRaw === 'openai-compat') {
+      gatewayRoute = 'official'
     } else {
       gatewayRoute = gatewayRouteRaw
     }
@@ -334,10 +334,10 @@ export async function resolveModelSelection(
   }
 
   const providerKey = getProviderKey(exact.provider).toLowerCase()
-  const llmProtocol = mediaType === 'llm' && providerKey === 'openai-compatible'
+  const llmProtocol = mediaType === 'llm' && (providerKey === 'openai-compatible' || providerKey === 'openrouter')
     ? (exact.llmProtocol || 'chat-completions')
     : undefined
-  const compatMediaTemplate = (mediaType === 'image' || mediaType === 'video') && providerKey === 'openai-compatible'
+  const compatMediaTemplate = (mediaType === 'image' || mediaType === 'video') && (providerKey === 'openai-compatible' || providerKey === 'openrouter')
     ? exact.compatMediaTemplate
     : undefined
 
@@ -365,10 +365,10 @@ async function resolveSingleModelSelection(
 
   const model = models[0]
   const providerKey = getProviderKey(model.provider).toLowerCase()
-  const llmProtocol = mediaType === 'llm' && providerKey === 'openai-compatible'
+  const llmProtocol = mediaType === 'llm' && (providerKey === 'openai-compatible' || providerKey === 'openrouter')
     ? (model.llmProtocol || 'chat-completions')
     : undefined
-  const compatMediaTemplate = (mediaType === 'image' || mediaType === 'video') && providerKey === 'openai-compatible'
+  const compatMediaTemplate = (mediaType === 'image' || mediaType === 'video') && (providerKey === 'openai-compatible' || providerKey === 'openrouter')
     ? model.compatMediaTemplate
     : undefined
 

@@ -33,8 +33,10 @@ export function useWorkspaceStageNavigation({
       case 'storyboard':
         return stageArtifacts.hasStoryboard ? 'ready' : 'empty'
       case 'videos':
-      case 'editor':
         return stageArtifacts.hasVideo ? 'ready' : 'empty'
+      case 'editor':
+      case 'face-swap':
+        return 'active'
       case 'voice':
         return stageArtifacts.hasVoice ? 'ready' : 'empty'
       default:
@@ -47,13 +49,7 @@ export function useWorkspaceStageNavigation({
     { id: 'script', icon: 'A', label: t('stages.script'), status: getStageStatus('assets') },
     { id: 'storyboard', icon: 'B', label: t('stages.storyboard'), status: getStageStatus('storyboard') },
     { id: 'videos', icon: 'V', label: t('stages.video'), status: getStageStatus('videos') },
-    {
-      id: 'editor',
-      icon: 'E',
-      label: t('stages.editor'),
-      status: 'empty',
-      disabled: true,
-      disabledLabel: t('stages.editorComingSoon'),
-    },
+    { id: 'editor', icon: 'E', label: t('stages.editor'), status: getStageStatus('editor') },
+    { id: 'face-swap', icon: 'M', label: t('stages.faceSwap') || 'Video Edit', status: getStageStatus('face-swap') },
   ]
 }

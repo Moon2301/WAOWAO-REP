@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import {
     ART_STYLES,
     VIDEO_RATIOS,
@@ -151,6 +151,7 @@ export function SettingsModal({
     onTTSRateChange,
 }: SettingsModalProps) {
     const t = useTranslations('configModal')
+    const locale = useLocale()
     const [saveStatus, setSaveStatus] = useState<'idle' | 'saved'>('idle')
     const userModels = useMemo<UserModels>(() => ({
         llm: Array.isArray(availableModels?.llm) ? availableModels.llm : [],
@@ -373,7 +374,10 @@ export function SettingsModal({
                                 <StyleSelector
                                     value={artStyle}
                                     onChange={(value) => handleChange(onArtStyleChange)(value)}
-                                    options={ART_STYLES}
+                                    options={ART_STYLES.map(s => ({
+                                        ...s,
+                                        label: locale === 'en' ? s.labelEn : s.label
+                                    }))}
                                 />
                             </div>
                             <div className="space-y-2">

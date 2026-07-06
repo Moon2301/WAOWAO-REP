@@ -7,6 +7,7 @@ import {
   type UnifiedModelType,
 } from '@/lib/model-config-contract'
 import { findBuiltinCapabilities, findBuiltinCapabilityCatalogEntry } from '@/lib/model-capabilities/catalog'
+import { snapVideoDurationForModel } from '@/lib/model-capabilities/video-duration-snap'
 
 export type CapabilitySelectionValidationCode =
   | 'CAPABILITY_SELECTION_INVALID'
@@ -300,6 +301,53 @@ export function resolveGenerationOptionsForModel(input: {
         normalizedSelection = {
           ...normalizedSelection,
           resolution: firstResolution,
+        }
+      }
+    }
+  }
+
+  if (input.modelType === 'video') {
+    const optionFields = getCapabilityOptionFields(input.modelType, input.capabilities)
+    const hasGenerationModeOptions = Array.isArray(optionFields.generationMode) && optionFields.generationMode.length > 0
+    const hasGenerationModeInSelection = Object.prototype.hasOwnProperty.call(normalizedSelection, 'generationMode')
+
+    if (hasGenerationModeOptions && !hasGenerationModeInSelection) {
+      const missingGenerationModeIssue = precheckIssues.find(
+        (issue) =>
+          issue.code === 'CAPABILITY_REQUIRED'
+          && issue.field === `capabilities.${input.modelKey}.generationMode`,
+      )
+
+      if (missingGenerationModeIssue) {
+        const preferred = optionFields.generationMode.includes('normal')
+          ? 'normal'
+          : optionFields.generationMode[0]
+        normalizedSelection = {
+          ...normalizedSelection,
+          generationMode: preferred,
+        }
+      }
+    }
+
+    const durationOptions = optionFields.duration
+    if (Array.isArray(durationOptions) && durationOptions.length > 0) {
+      const currentDuration = normalizedSelection.duration
+      if (typeof currentDuration === 'number' && !durationOptions.includes(currentDuration)) {
+        normalizedSelection = {
+          ...normalizedSelection,
+          duration: snapVideoDurationForModel(input.modelKey, currentDuration),
+        }
+      } else if (currentDuration === undefined) {
+        const missingDurationIssue = precheckIssues.find(
+          (issue) =>
+            issue.code === 'CAPABILITY_REQUIRED'
+            && issue.field === `capabilities.${input.modelKey}.duration`,
+        )
+        if (missingDurationIssue) {
+          normalizedSelection = {
+            ...normalizedSelection,
+            duration: durationOptions[0],
+          }
         }
       }
     }

@@ -1,7 +1,7 @@
 'use client'
 
 import type { DragEvent, RefObject } from 'react'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { ART_STYLES } from '@/lib/constants'
 import CharacterCreationPreview from './CharacterCreationPreview'
 import { AppIcon } from '@/components/ui/icons'
@@ -89,6 +89,7 @@ export default function CharacterCreationForm({
   isExtracting,
 }: CharacterCreationFormProps) {
   const t = useTranslations('assetModal')
+  const locale = useLocale()
 
   return (
     <div className="space-y-5">
@@ -185,7 +186,7 @@ export default function CharacterCreationForm({
                   : 'glass-btn-soft border-[var(--glass-stroke-base)] text-[var(--glass-text-secondary)]'
                   }`}
               >
-                <span>{style.label}</span>
+                <span>{locale === 'en' ? style.labelEn : style.label}</span>
               </button>
             ))}
           </div>

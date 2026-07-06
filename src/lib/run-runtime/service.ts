@@ -14,6 +14,11 @@ import {
   type StateRef,
 } from './types'
 
+const RUN_RUNTIME_TX_OPTIONS = {
+  maxWait: 10_000,
+  timeout: 30_000,
+} as const
+
 type JsonRecord = Record<string, unknown>
 
 type GraphRunRow = {
@@ -140,7 +145,10 @@ type GraphRuntimeTx = {
 }
 
 type GraphRuntimeClient = GraphRuntimeTx & {
-  $transaction: <T>(fn: (tx: GraphRuntimeTx) => Promise<T>) => Promise<T>
+  $transaction: <T>(
+    fn: (tx: GraphRuntimeTx) => Promise<T>,
+    options?: { maxWait?: number; timeout?: number },
+  ) => Promise<T>
 }
 
 const runtimeClient = prisma as unknown as GraphRuntimeClient
@@ -897,6 +905,8 @@ export async function requestRunCancel(params: {
 }
 
 export async function appendRunEventWithSeq(input: RunEventInput): Promise<RunEvent> {
+  await ensureGraphArtifactUniqueIndex()
+
   return await runtimeClient.$transaction(async (tx) => {
     const run = await tx.graphRun.update({
       where: { id: input.runId },
@@ -925,7 +935,7 @@ export async function appendRunEventWithSeq(input: RunEventInput): Promise<RunEv
 
     await applyRunProjection(tx, input)
     return mapEventRow(created)
-  })
+  }, RUN_RUNTIME_TX_OPTIONS)
 }
 
 export async function listRunEventsAfterSeq(params: {
@@ -1195,5 +1205,5 @@ export async function retryFailedStep(params: {
       retryAttempt: nextAttempt,
       invalidatedStepKeys,
     }
-  })
+  }, RUN_RUNTIME_TX_OPTIONS)
 }

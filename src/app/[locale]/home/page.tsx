@@ -6,7 +6,7 @@
  */
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSession } from 'next-auth/react'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import Navbar from '@/components/Navbar'
 import { AppIcon, IconGradientDefs } from '@/components/ui/icons'
 import StoryInputComposer from '@/components/story-input/StoryInputComposer'
@@ -45,6 +45,7 @@ export default function HomePage() {
   const router = useRouter()
   const t = useTranslations('home')
   const tc = useTranslations('common')
+  const locale = useLocale()
 
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
@@ -146,8 +147,8 @@ export default function HomePage() {
 
   // 风格选项（带推荐标签）
   const styleOptions = useMemo(
-    () => ART_STYLES.map((s) => ({ ...s, recommended: s.value === 'realistic' })),
-    []
+    () => ART_STYLES.map((s) => ({ ...s, label: locale === 'en' ? s.labelEn : s.label, recommended: s.value === 'realistic' })),
+    [locale]
   )
   // 时间格式化
   const formatTimeAgo = (dateString: string): string => {

@@ -259,6 +259,10 @@ model NovelPromotionProject {
   lastEpisodeId   String?
   imageResolution String                    @default("2K")
   importStatus    String?
+  fbfResultVideoMediaId String?
+  fbfResultVideoMedia   MediaObject?              @relation("NovelPromotionProjectFbfResultVideo", fields: [fbfResultVideoMediaId], references: [id], onDelete: SetNull)
+  chunkResultVideoMediaId String?
+  chunkResultVideoMedia   MediaObject?              @relation("NovelPromotionProjectChunkResultVideo", fields: [chunkResultVideoMediaId], references: [id], onDelete: SetNull)
   characters      NovelPromotionCharacter[]
   episodes        NovelPromotionEpisode[]
   locations       NovelPromotionLocation[]
@@ -817,6 +821,8 @@ model MediaObject {
   globalLocationImageImages             GlobalLocationImage[]       @relation("GlobalLocationImageMedia")
   globalLocationImagePreviousImages     GlobalLocationImage[]       @relation("GlobalLocationImagePreviousImageMedia")
   globalVoiceCustomVoices               GlobalVoice[]               @relation("GlobalVoiceCustomVoiceMedia")
+  novelPromotionProjectFbfResultVideos  NovelPromotionProject[]     @relation("NovelPromotionProjectFbfResultVideo")
+  novelPromotionProjectChunkResultVideos NovelPromotionProject[]    @relation("NovelPromotionProjectChunkResultVideo")
 
   @@index([createdAt])
   @@map("media_objects")

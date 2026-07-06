@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSignedUrl, toFetchableUrl } from '@/lib/storage'
+import { getObjectStream, guessContentTypeFromKey } from '@/lib/storage'
 import { getMediaObjectByPublicId } from '@/lib/media/service'
 
 export const runtime = 'nodejs'
@@ -40,33 +40,27 @@ export async function GET(
     })
   }
 
-  const fetchUrl = toFetchableUrl(getSignedUrl(media.storageKey))
-  const range = request.headers.get('range')
-
-  const upstream = await fetch(fetchUrl, {
-    headers: range ? { Range: range } : undefined,
-  })
-
-  if (!upstream.ok) {
-    const status = upstream.status === 404 ? 404 : 502
-    return NextResponse.json({ error: 'Failed to fetch media' }, { status })
+  // Đọc thẳng từ storage — không tự fetch lại app qua HTTP (dễ ECONNREFUSED)
+  const range = request.headers.get('range') || undefined
+  let stream
+  try {
+    stream = await getObjectStream(media.storageKey.replace(/^\/+/, ''), range)
+  } catch {
+    return NextResponse.json({ error: 'Failed to fetch media' }, { status: 404 })
   }
 
-  const contentType = media.mimeType || upstream.headers.get('content-type') || 'application/octet-stream'
-  const contentLength = upstream.headers.get('content-length')
-  const contentRange = upstream.headers.get('content-range')
-  const acceptRanges = upstream.headers.get('accept-ranges') || (contentType.startsWith('video/') ? 'bytes' : null)
+  const contentType = media.mimeType || stream.contentType || guessContentTypeFromKey(media.storageKey)
 
   const headers = new Headers()
   headers.set('Content-Type', contentType)
   headers.set('Cache-Control', 'public, max-age=31536000, immutable')
   headers.set('ETag', etag)
-  if (contentLength) headers.set('Content-Length', contentLength)
-  if (contentRange) headers.set('Content-Range', contentRange)
-  if (acceptRanges) headers.set('Accept-Ranges', acceptRanges)
+  headers.set('Accept-Ranges', 'bytes')
+  if (stream.contentLength !== undefined) headers.set('Content-Length', String(stream.contentLength))
+  if (stream.contentRange) headers.set('Content-Range', stream.contentRange)
 
-  return new Response(upstream.body, {
-    status: upstream.status === 206 ? 206 : 200,
+  return new Response(stream.body, {
+    status: stream.status,
     headers,
   })
 }

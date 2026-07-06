@@ -89,6 +89,24 @@
     "downloadCount": "下载 {count} 个视频",
     "packing": "打包中...",
     "downloadAll": "下载全部",
+    "mergeVideos": "合并成片",
+    "mergingVideos": "合并中...",
+    "faceSwap": "角色重绘",
+    "faceSwapTitle": "角色视频编辑",
+    "faceSwapDescription": "上传视频和新角色图像，让AI分析动作并使用Veo/Wan生成新视频。",
+    "uploadOriginalVideo": "上传原视频",
+    "targetCharacterImage": "新角色图像",
+    "startFaceSwap": "开始编辑",
+    "processingFaceSwap": "处理中...",
+    "faceSwapComplete": "编辑完成",
+    "downloadResult": "下载结果",
+    "startNew": "开始新任务",
+    "retry": "重试",
+    "geminiAnalyzing": "AI正在分析视频...",
+    "generatingVideo": "正在生成新视频...",
+    "mergingAudio": "正在合并音频...",
+    "errorOccurred": "发生错误",
+    "uploadingFiles": "正在上传文件...",
     "enterEditor": "进入视频剪辑器",
     "enterEdit": "进入剪辑",
     "back": "返回"
@@ -206,5 +224,9 @@
   },
   "common": {
     "generate": "生成"
-  }
+  },
+  "faceSwapTitle": "视频换脸",
+  "faceSwapDescription": "上传原始视频和目标角色图片，AI将分析视频的运动并使用目标角色生成新视频。",
+  "uploadOriginalVideo": "上传原始视频",
+  "targetCharacterImage": "目标角色图片"
 }

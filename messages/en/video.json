@@ -89,6 +89,25 @@
     "downloadCount": "Download {count} videos",
     "packing": "Packing...",
     "downloadAll": "Download All",
+    "mergeVideos": "Merge Videos",
+    "mergingVideos": "Merging...",
+    "faceSwap": "Video Edit",
+    "faceSwapTitle": "Character Video Edit",
+    "faceSwapDescription": "Upload a video and a new character image, let AI analyze the actions and generate a new video using Veo/Wan.",
+    "uploadOriginalVideo": "Upload Source Video",
+    "targetCharacterImage": "New Character Image",
+    "startFaceSwap": "Start Editing",
+    "processingFaceSwap": "Processing...",
+    "faceSwapComplete": "Editing Complete",
+    "downloadResult": "Download Result",
+    "startNew": "Start New",
+    "retry": "Retry",
+    "geminiAnalyzing": "AI Analyzing Video...",
+    "generatingVideo": "Generating New Video...",
+    "mergingAudio": "Merging Audio...",
+    "errorOccurred": "An error occurred",
+    "uploadingFiles": "Uploading files...",
+    "mergeCount": "Merge {count} videos",
     "enterEditor": "Enter Video Editor",
     "enterEdit": "Enter Editor",
     "back": "Back"
@@ -206,5 +225,9 @@
   },
   "common": {
     "generate": "Generate"
-  }
+  },
+  "faceSwapTitle": "Video Character Swap",
+  "faceSwapDescription": "Upload an original video and a target character image. Our AI will analyze the video's motions and generate a new video using the target character.",
+  "uploadOriginalVideo": "Upload Original Video",
+  "targetCharacterImage": "Target Character Image"
 }

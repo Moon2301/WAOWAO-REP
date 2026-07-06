@@ -2,7 +2,7 @@
 import { logError as _ulogError } from '@/lib/logging/core'
 
 import { useState } from 'react'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { ART_STYLES } from '@/lib/constants'
 import { shouldShowError } from '@/lib/error-utils'
 import { useImageGenerationCount } from '@/lib/image-generation/use-image-generation-count'
@@ -51,6 +51,7 @@ export default function AddLocationModal({
 }: AddLocationModalProps) {
   const t = useTranslations('assets')
   const tc = useTranslations('common')
+  const locale = useLocale()
   const aiCreateLocationMutation = useAiCreateProjectLocation(projectId)
   const createLocationMutation = useCreateProjectLocation(projectId)
   const { count: locationGenerationCount } = useImageGenerationCount('location')
@@ -179,7 +180,7 @@ export default function AddLocationModal({
                       : 'border-[var(--glass-stroke-base)] hover:border-[var(--glass-stroke-strong)] text-[var(--glass-text-secondary)]'
                       }`}
                   >
-                    <span>{style.label}</span>
+                    <span>{locale === 'en' ? style.labelEn : style.label}</span>
                   </button>
                 ))}
               </div>

@@ -4,6 +4,7 @@ import {
   createOpenAICompatClient,
   readStringOption,
   resolveOpenAICompatClientConfig,
+  toDataUrl,
   toUploadFile,
 } from './common'
 
@@ -170,8 +171,44 @@ export async function generateImageViaOpenAICompat(request: OpenAICompatImageReq
   const rawSize = resolveRawSize(options)
   const size = normalizeOpenAIImageSize(rawSize)
 
-  if (referenceImages.length > 0) {
-    const response = await client.images.edit({
+  let response: unknown
+  const isOpenRouter = providerId.toLowerCase().includes('openrouter')
+
+  if (isOpenRouter) {
+    let input_references: Array<{ type: string; image_url: { url: string } }> | undefined
+    if (referenceImages.length > 0) {
+      input_references = await Promise.all(
+        referenceImages.map(async (img) => ({
+          type: 'image_url',
+          image_url: { url: await toDataUrl(img) },
+        }))
+      )
+    }
+
+    const reqBody = {
+      model: normalizedModelId,
+      prompt,
+      response_format: responseFormat,
+      ...(input_references ? { input_references } : {}),
+      ...(outputFormat ? { output_format: outputFormat } : {}),
+      ...(quality ? { quality } : {}),
+      ...(size ? { size } : {}),
+    }
+
+    const res = await fetch(`${config.baseUrl.replace(/\/$/, '')}/images`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(reqBody),
+    })
+    if (!res.ok) {
+      throw new Error(`OpenRouter Image API failed: ${res.status} ${await res.text()}`)
+    }
+    response = await res.json()
+  } else if (referenceImages.length > 0) {
+    response = await client.images.edit({
       model: normalizedModelId,
       prompt,
       image: await Promise.all(referenceImages.map((image, index) => toUploadFile(image, index))),
@@ -180,36 +217,16 @@ export async function generateImageViaOpenAICompat(request: OpenAICompatImageReq
       ...(quality ? { quality } : {}),
       ...(size ? { size } : {}),
     } as unknown as Parameters<typeof client.images.edit>[0])
-
-    const imagePayload = readAllImagePayloads(response)
-    const imageBase64 = imagePayload.b64Json
-    if (typeof imageBase64 === 'string' && imageBase64.trim().length > 0) {
-      const mimeType = toMimeFromOutputFormat(outputFormat)
-      return {
-        success: true,
-        imageBase64,
-        imageUrl: `data:${mimeType};base64,${imageBase64}`,
-      }
-    }
-    const imageUrl = imagePayload.url
-    if (typeof imageUrl === 'string' && imageUrl.trim().length > 0) {
-      return {
-        success: true,
-        imageUrl,
-        ...(imagePayload.urls.length > 1 ? { imageUrls: imagePayload.urls } : {}),
-      }
-    }
-    throw new Error('OPENAI_COMPAT_IMAGE_EMPTY_RESPONSE: no image data returned')
+  } else {
+    response = await client.images.generate({
+      model: normalizedModelId,
+      prompt,
+      response_format: responseFormat,
+      ...(outputFormat ? { output_format: outputFormat } : {}),
+      ...(quality ? { quality } : {}),
+      ...(size ? { size } : {}),
+    } as unknown as Parameters<typeof client.images.generate>[0])
   }
-
-  const response = await client.images.generate({
-    model: normalizedModelId,
-    prompt,
-    response_format: responseFormat,
-    ...(outputFormat ? { output_format: outputFormat } : {}),
-    ...(quality ? { quality } : {}),
-    ...(size ? { size } : {}),
-  } as unknown as Parameters<typeof client.images.generate>[0])
 
   const imagePayload = readAllImagePayloads(response)
   const imageBase64 = imagePayload.b64Json

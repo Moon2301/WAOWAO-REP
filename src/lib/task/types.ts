@@ -78,6 +78,14 @@ export const TASK_TYPE = {
   ASSET_HUB_AI_MODIFY_LOCATION: 'asset_hub_ai_modify_location',
   ASSET_HUB_AI_MODIFY_PROP: 'asset_hub_ai_modify_prop',
   ASSET_HUB_REFERENCE_TO_CHARACTER: 'asset_hub_reference_to_character',
+  PANEL_CHARACTER_SWAP: 'panel_character_swap',
+  VIDEO_CHARACTER_SWAP: 'video_character_swap',
+  VIDEO_CHARACTER_SWAP_CHUNK: 'video_character_swap_chunk',
+  VIDEO_CHARACTER_SWAP_MERGE: 'video_character_swap_merge',
+  VIDEO_FRAME_EXTRACT: 'video_frame_extract',
+  VIDEO_FRAME_CLASSIFY: 'video_frame_classify',
+  VIDEO_FRAME_PROCESS: 'video_frame_process',
+  VIDEO_FRAME_MERGE: 'video_frame_merge',
 } as const
 
 export type TaskType = (typeof TASK_TYPE)[keyof typeof TASK_TYPE]

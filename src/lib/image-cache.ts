@@ -120,7 +120,17 @@ async function downloadImageAsBase64(imageUrl: string, logPrefix: string): Promi
 
         const buffer = await response.arrayBuffer()
         const base64 = Buffer.from(buffer).toString('base64')
-        const contentType = response.headers.get('content-type') || 'image/png'
+        let contentType = response.headers.get('content-type') || 'image/png'
+        if (contentType.includes('application/octet-stream')) {
+            const lowerUrl = imageUrl.toLowerCase();
+            if (lowerUrl.includes('.jpg') || lowerUrl.includes('.jpeg')) {
+                contentType = 'image/jpeg';
+            } else if (lowerUrl.includes('.webp')) {
+                contentType = 'image/webp';
+            } else {
+                contentType = 'image/png';
+            }
+        }
 
         const duration = Date.now() - startTime
         totalDownloadTime += duration

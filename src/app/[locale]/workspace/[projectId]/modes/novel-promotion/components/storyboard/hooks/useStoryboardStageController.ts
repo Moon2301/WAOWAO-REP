@@ -126,6 +126,7 @@ export function useStoryboardStageController({
     setEditingPanel,
     modifyingPanels,
     isDownloadingImages,
+    isMergingVideos,
     previewImage,
     setPreviewImage,
     regeneratePanelImage,
@@ -136,6 +137,7 @@ export function useStoryboardStageController({
     getPanelCandidates,
     modifyPanelImage,
     downloadAllImages,
+    mergeAllVideos,
     clearStoryboardError,
   } = imageOps
 
@@ -197,9 +199,9 @@ export function useStoryboardStageController({
     savePanelWithData, addPanel, deletePanel, deleteStoryboard, regenerateStoryboardText, addStoryboardGroup, moveStoryboardGroup, insertPanel,
     submittingVariantPanelId, generatePanelVariant,
     submittingStoryboardIds, submittingPanelImageIds, selectingCandidateIds,
-    editingPanel, setEditingPanel, modifyingPanels, isDownloadingImages, previewImage, setPreviewImage,
+    editingPanel, setEditingPanel, modifyingPanels, isDownloadingImages, isMergingVideos, previewImage, setPreviewImage,
     regeneratePanelImage, regenerateAllPanelsIndividually, selectPanelCandidate, selectPanelCandidateIndex,
-    cancelPanelCandidate, getPanelCandidates, modifyPanelImage, downloadAllImages, clearStoryboardError,
+    cancelPanelCandidate, getPanelCandidates, modifyPanelImage, downloadAllImages, mergeAllVideos, clearStoryboardError,
     assetPickerPanel, setAssetPickerPanel, aiDataPanel, setAIDataPanel, isEpisodeBatchSubmitting,
     getDefaultAssetsForClip, handleEditSubmit, handlePanelUpdate, handleAddCharacter, handleSetLocation, handleRemoveCharacter, handleRemoveLocation,
     retrySave,

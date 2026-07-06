@@ -13,6 +13,7 @@ import {
   getUserModelConfig,
   resolveProjectModelCapabilityGenerationOptions,
 } from '@/lib/config-service'
+import { snapVideoDurationForModel } from '@/lib/model-capabilities/video-duration-snap'
 import { TaskTerminatedError } from '@/lib/task/errors'
 import { isTaskActive, trySetTaskExternalId } from '@/lib/task/service'
 import { type TaskJobData } from '@/lib/task/types'
@@ -177,6 +178,7 @@ export async function resolveImageSourceFromGeneration(
       resolution?: string
       size?: string
       provider?: string
+      seed?: number
     }
     allowTaskExternalIdResume?: boolean
     pollProgress?: { start?: number; end?: number }
@@ -460,7 +462,7 @@ export async function resolveVideoSourceFromGeneration(
 
   const runtimeSelections: Record<string, string | number | boolean> = {}
   if (typeof params.options?.duration === 'number') {
-    runtimeSelections.duration = params.options.duration
+    runtimeSelections.duration = snapVideoDurationForModel(params.modelId, params.options.duration)
   }
   if (typeof params.options?.resolution === 'string') {
     runtimeSelections.resolution = params.options.resolution
@@ -470,6 +472,8 @@ export async function resolveVideoSourceFromGeneration(
     || params.options?.generationMode === 'firstlastframe'
   ) {
     runtimeSelections.generationMode = params.options.generationMode
+  } else {
+    runtimeSelections.generationMode = 'normal'
   }
   if (typeof params.options?.generateAudio === 'boolean') {
     runtimeSelections.generateAudio = params.options.generateAudio

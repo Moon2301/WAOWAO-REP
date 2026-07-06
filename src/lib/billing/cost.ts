@@ -584,12 +584,14 @@ export function calcVideo(
   ) {
     capabilitySelections.resolution = selections.resolution
   }
-  if (
-    typeof capabilitySelections.generationMode !== 'string'
-    && videoCapabilitySupportsField(model, 'generationMode')
-  ) {
-    capabilitySelections.generationMode = selections.generationMode
+  if (!videoCapabilitySupportsField(model, 'generationMode')) {
+    if (capabilitySelections.generationMode === 'normal') {
+      delete capabilitySelections.generationMode
+    }
+  } else if (typeof capabilitySelections.generationMode !== 'string') {
+    capabilitySelections.generationMode = selections.generationMode ?? 'normal'
   }
+
   if (typeof capabilitySelections.generateAudio !== 'boolean' && typeof selections.generateAudio === 'boolean') {
     capabilitySelections.generateAudio = selections.generateAudio
   }

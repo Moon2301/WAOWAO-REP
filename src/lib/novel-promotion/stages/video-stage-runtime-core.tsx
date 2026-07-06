@@ -15,6 +15,7 @@ import {
   useListProjectEpisodeVideoUrls,
   useMatchedVoiceLines,
   useUpdateProjectPanelLink,
+  useMergeProjectVideos,
 } from '@/lib/query/hooks'
 import { useLipSync } from '@/lib/query/hooks/useStoryboards'
 import ImagePreviewModal from '@/components/ui/ImagePreviewModal'
@@ -35,6 +36,7 @@ import { useVideoPromptState } from './video-stage-runtime/useVideoPromptState'
 import { useVideoPanelLinking } from './video-stage-runtime/useVideoPanelLinking'
 import { useVideoVoiceLines } from './video-stage-runtime/useVideoVoiceLines'
 import { useVideoDownloadAll } from './video-stage-runtime/useVideoDownloadAll'
+import { useVideoMergeAll } from './video-stage-runtime/useVideoMergeAll'
 import { useVideoStageUiState } from './video-stage-runtime/useVideoStageUiState'
 import { useVideoPanelViewport } from './video-stage-runtime/useVideoPanelViewport'
 import { useVideoFirstLastFrameFlow } from './video-stage-runtime/useVideoFirstLastFrameFlow'
@@ -102,6 +104,7 @@ export function useVideoStageRuntime({
   const listEpisodeVideoUrlsMutation = useListProjectEpisodeVideoUrls(projectId)
   const updatePanelLinkMutation = useUpdateProjectPanelLink(projectId)
   const downloadRemoteBlobMutation = useDownloadRemoteBlob()
+  const mergeVideosMutation = useMergeProjectVideos(projectId)
   const matchedVoiceLinesQuery = useMatchedVoiceLines(projectId, episodeId)
 
   const { panelVideoStates, panelLipStates } = useVideoTaskStates({
@@ -151,6 +154,17 @@ export function useVideoStageRuntime({
     panelVideoPreference,
     listEpisodeVideoUrlsMutation,
     downloadRemoteBlobMutation,
+  })
+
+  const {
+    isMerging,
+    handleMergeAllVideos,
+  } = useVideoMergeAll({
+    episodeId,
+    t: (key) => t(key as never),
+    allPanels,
+    panelVideoPreference,
+    mergeVideosMutation,
   })
 
   const allVideoModelOptions = useMemo(
@@ -516,8 +530,10 @@ export function useVideoStageRuntime({
         failedCount={failedCount}
         isAnyTaskRunning={isAnyTaskRunning}
         isDownloading={isDownloading}
+        isMerging={isMerging}
         onGenerateAll={handleOpenBatchGenerateModal}
         onDownloadAll={handleDownloadAllVideos}
+        onMergeVideos={handleMergeAllVideos}
         onBack={onBack}
         onEnterEditor={onEnterEditor}
         videosReady={videosWithUrl > 0}

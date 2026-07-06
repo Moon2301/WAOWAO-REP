@@ -33,6 +33,10 @@ const TASK_INTENT_BY_TYPE: Record<TaskType, TaskIntent> = {
   [TASK_TYPE.REGENERATE_STORYBOARD_TEXT]: 'regenerate',
   [TASK_TYPE.INSERT_PANEL]: 'build',
   [TASK_TYPE.PANEL_VARIANT]: 'regenerate',
+  [TASK_TYPE.PANEL_CHARACTER_SWAP]: 'generate',
+  [TASK_TYPE.VIDEO_CHARACTER_SWAP]: 'generate',
+  [TASK_TYPE.VIDEO_CHARACTER_SWAP_CHUNK]: 'generate',
+  [TASK_TYPE.VIDEO_CHARACTER_SWAP_MERGE]: 'process',
   [TASK_TYPE.MODIFY_ASSET_IMAGE]: 'modify',
   [TASK_TYPE.REGENERATE_GROUP]: 'regenerate',
   [TASK_TYPE.ASSET_HUB_IMAGE]: 'generate',
@@ -62,6 +66,10 @@ const TASK_INTENT_BY_TYPE: Record<TaskType, TaskIntent> = {
   [TASK_TYPE.ASSET_HUB_AI_MODIFY_LOCATION]: 'modify',
   [TASK_TYPE.ASSET_HUB_AI_MODIFY_PROP]: 'modify',
   [TASK_TYPE.ASSET_HUB_REFERENCE_TO_CHARACTER]: 'process',
+  [TASK_TYPE.VIDEO_FRAME_EXTRACT]: 'process',
+  [TASK_TYPE.VIDEO_FRAME_CLASSIFY]: 'process',
+  [TASK_TYPE.VIDEO_FRAME_PROCESS]: 'process',
+  [TASK_TYPE.VIDEO_FRAME_MERGE]: 'process',
 }
 
 export function resolveTaskIntent(taskType: string | null | undefined): TaskIntent {

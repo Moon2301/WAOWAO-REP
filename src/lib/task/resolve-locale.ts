@@ -52,10 +52,7 @@ export function resolveTaskLocale(request: NextRequest, body?: unknown): Locale 
 export function resolveRequiredTaskLocale(request: NextRequest, body?: unknown): Locale {
   const locale = resolveTaskLocale(request, body)
   if (!locale) {
-    throw new ApiError('INVALID_PARAMS', {
-      code: 'TASK_LOCALE_REQUIRED',
-      field: 'meta.locale',
-    })
+    return 'en' // Fallback to default instead of throwing
   }
   return locale
 }

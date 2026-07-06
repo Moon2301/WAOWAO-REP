@@ -12,6 +12,7 @@ import {
   useRegenerateProjectPanelImage,
   useModifyProjectStoryboardImage,
   useDownloadProjectImages,
+  useMergeProjectVideos,
 } from '@/lib/query/hooks'
 import {
   getStoryboardPanels,
@@ -21,6 +22,7 @@ import {
 import { usePanelImageRegeneration } from './usePanelImageRegeneration'
 import { usePanelImageModification } from './usePanelImageModification'
 import { usePanelImageDownload } from './usePanelImageDownload'
+import { usePanelVideoMerge } from './usePanelVideoMerge'
 
 export interface SelectedAsset {
   id: string
@@ -50,6 +52,7 @@ export function useStoryboardImageGeneration({
   const regeneratePanelMutation = useRegenerateProjectPanelImage(projectId)
   const modifyPanelMutation = useModifyProjectStoryboardImage(projectId)
   const downloadImagesMutation = useDownloadProjectImages(projectId)
+  const mergeVideosMutation = useMergeProjectVideos(projectId)
   const clearStoryboardErrorMutation = useClearProjectStoryboardError(projectId)
 
   const submittingStoryboardIds = new Set<string>(
@@ -63,6 +66,7 @@ export function useStoryboardImageGeneration({
   const [editingPanel, setEditingPanel] = useState<{ storyboardId: string; panelIndex: number } | null>(null)
   const [modifyingPanels, setModifyingPanels] = useState<Set<string>>(new Set())
   const [isDownloadingImages, setIsDownloadingImages] = useState(false)
+  const [isMergingVideos, setIsMergingVideos] = useState(false)
   const [previewImage, setPreviewImage] = useState<string | null>(null)
 
   const {
@@ -145,6 +149,12 @@ export function useStoryboardImageGeneration({
     setIsDownloadingImages,
   })
 
+  const { mergeAllVideos } = usePanelVideoMerge({
+    localStoryboards,
+    mergeVideosMutation,
+    setIsMergingVideos,
+  })
+
   const clearStoryboardError = useCallback(async (storyboardId: string) => {
     let snapshot: NovelPromotionStoryboard[] | null = null
     setLocalStoryboards((previousStoryboards) =>
@@ -187,6 +197,7 @@ export function useStoryboardImageGeneration({
     setEditingPanel,
     modifyingPanels,
     isDownloadingImages,
+    isMergingVideos,
     previewImage,
     setPreviewImage,
     regeneratePanelImage,
@@ -197,6 +208,7 @@ export function useStoryboardImageGeneration({
     getPanelCandidates,
     modifyPanelImage,
     downloadAllImages,
+    mergeAllVideos,
     clearStoryboardError,
   }
 }

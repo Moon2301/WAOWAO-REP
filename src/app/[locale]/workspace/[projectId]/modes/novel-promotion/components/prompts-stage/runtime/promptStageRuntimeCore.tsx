@@ -1,6 +1,6 @@
 'use client'
 
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { useCallback, useMemo, useState } from 'react'
 import { ART_STYLES } from '@/lib/constants'
 import { resolveTaskPresentationState } from '@/lib/task/presentation'
@@ -36,13 +36,15 @@ export function usePromptStageActions({
   onAppendContent,
 }: PromptsStageShellProps) {
   const t = useTranslations('storyboard')
+  const locale = useLocale()
   const aiModifyShotPrompt = useAiModifyProjectShotPrompt(projectId)
 
   const isShotTaskRunning = useCallback((shot: NovelPromotionShot) => {
     return Boolean((shot as NovelPromotionShot & { imageTaskRunning?: boolean }).imageTaskRunning)
   }, [])
 
-  const styleLabel = ART_STYLES.find((style) => style.value === artStyle)?.label || t('prompts.customStyle')
+  const styleObj = ART_STYLES.find((style) => style.value === artStyle)
+  const styleLabel = styleObj ? (locale === 'en' ? styleObj.labelEn : styleObj.label) : t('prompts.customStyle')
   const runningCount = shots.filter((shot) => isShotTaskRunning(shot)).length
   const [previewImage, setPreviewImage] = useState<string | null>(null)
 

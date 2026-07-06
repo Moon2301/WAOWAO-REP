@@ -65,6 +65,9 @@
         "downloading": "打包中...",
         "noImages": "没有可下载的图片",
         "downloadAllImages": "下载所有图片",
+        "mergeVideos": "合并视频",
+        "mergingVideos": "合并中...",
+        "noVideos": "没有可合并的视频",
         "generateVideo": "生成视频 →",
         "back": "← 返回",
         "concurrencyLimit": "并发上限 {count}"
@@ -249,7 +252,8 @@
         "addGroupFailed": "添加分镜组失败: {error}",
         "moveGroupFailed": "移动分镜组失败: {error}",
         "batchGenerateCompleted": "批量生成完成:\n成功: {succeeded}\n失败: {failed}\n\n部分错误: {errors}",
-        "batchGenerateFailed": "批量生成失败: {error}"
+        "batchGenerateFailed": "批量生成失败: {error}",
+        "mergeVideosFailed": "合并视频失败: {error}"
     },
     "canvas": {
         "emptyTitle": "暂无分镜数据",

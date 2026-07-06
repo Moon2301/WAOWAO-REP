@@ -1,7 +1,7 @@
 import { createScopedLogger } from '@/lib/logging/core'
 import { createStorageProvider } from '@/lib/storage/factory'
 import type { DeleteObjectsResult, StorageProvider } from '@/lib/storage/types'
-import { DEFAULT_SIGNED_URL_EXPIRES_SECONDS, withRetry } from '@/lib/storage/utils'
+import { DEFAULT_SIGNED_URL_EXPIRES_SECONDS, withRetry, resolveBaseUrl, normalizeKey } from '@/lib/storage/utils'
 
 const storageLogger = createScopedLogger({
   module: 'storage.provider',
@@ -60,11 +60,61 @@ export async function deleteObjects(keys: string[]): Promise<DeleteObjectsResult
 }
 
 export function extractStorageKey(input: string | null | undefined): string | null {
+  if (!input) return null
+
+  const signRouteKey = extractKeyFromStorageSignRoute(input)
+  if (signRouteKey) return signRouteKey
+
   return getStorageProvider().extractStorageKey(input)
+}
+
+function extractKeyFromStorageSignRoute(input: string): string | null {
+  if (!/(?:^|\/)api\/storage\/sign(?:\?|$)/.test(input)) return null
+  try {
+    const normalized = input.startsWith('http')
+      ? input
+      : input.startsWith('/')
+        ? input
+        : `/${input}`
+    const parsed = new URL(normalized, resolveBaseUrl())
+    const key = parsed.searchParams.get('key')
+    if (!key) return null
+    return normalizeKey(decodeURIComponent(key))
+  } catch {
+    return null
+  }
 }
 
 export async function getObjectBuffer(key: string): Promise<Buffer> {
   return await getStorageProvider().getObjectBuffer(key)
+}
+
+const CONTENT_TYPE_BY_EXT: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  svg: 'image/svg+xml',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  aac: 'audio/aac',
+  m4a: 'audio/mp4',
+  ogg: 'audio/ogg',
+  txt: 'text/plain',
+  json: 'application/json',
+}
+
+export function guessContentTypeFromKey(key: string): string {
+  const ext = key.split('.').pop()?.toLowerCase() || ''
+  return CONTENT_TYPE_BY_EXT[ext] || 'application/octet-stream'
+}
+
+export async function getObjectStream(key: string, range?: string) {
+  return await getStorageProvider().getObjectStream({ key, range: range || undefined })
 }
 
 export async function getSignedObjectUrl(key: string, expiresInSeconds: number = DEFAULT_SIGNED_URL_EXPIRES_SECONDS): Promise<string> {

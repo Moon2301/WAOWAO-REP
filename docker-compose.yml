@@ -62,7 +62,10 @@ services:
 
   # ==================== App (Next.js + Workers) ====================
   app:
-    image: ghcr.io/saturndec/waoowaoo:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: waoowaoo:latest
     container_name: waoowaoo-app
     restart: unless-stopped
     environment:
@@ -86,16 +89,20 @@ services:
       NEXTAUTH_URL: "http://localhost:13000"
       # 容器内自调用地址（服务端 fetch 自己的 API / 文件）
       INTERNAL_APP_URL: "http://127.0.0.1:3000"
+      HOSTNAME: "0.0.0.0"
       NEXTAUTH_SECRET: "waoowaoo-default-secret-2026"
       # 内部密钥
       CRON_SECRET: "waoowaoo-docker-cron-secret"
       INTERNAL_TASK_TOKEN: "waoowaoo-docker-task-token"
       API_ENCRYPTION_KEY: "waoowaoo-opensource-fixed-key-2026"
+      OPTICAL_FLOW_SERVICE_URL: "http://optical-flow:8000"
       # Worker 配置
       WATCHDOG_INTERVAL_MS: "30000"
       TASK_HEARTBEAT_TIMEOUT_MS: "90000"
-      QUEUE_CONCURRENCY_IMAGE: "50"
-      QUEUE_CONCURRENCY_VIDEO: "50"
+      QUEUE_CONCURRENCY_IMAGE: "20"
+      # Video task nào cũng buffer nguyên video vào RAM + chạy ffmpeg,
+      # concurrency 50 dễ OOM / nghẽn Redis (Missing lock) → giữ mức an toàn
+      QUEUE_CONCURRENCY_VIDEO: "8"
       QUEUE_CONCURRENCY_VOICE: "20"
       QUEUE_CONCURRENCY_TEXT: "50"
       # Bull Board
@@ -143,10 +150,37 @@ services:
         echo '║  Then open: https://localhost:1443                ║' &&
         echo '╚══════════════════════════════════════════════════╝' &&
         echo '') &
-        npm run start
+        npm run start:docker
       "
+
+  # ==================== Optical Flow Service ====================
+  optical-flow:
+    build:
+      context: ./services/optical-flow
+      dockerfile: Dockerfile
+    image: optical-flow-service:latest
+    container_name: waoowaoo-optical-flow
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+
+  # ==================== Caddy (HTTPS Reverse Proxy) ====================
+  caddy:
+    image: caddy:2-alpine
+    container_name: waoowaoo-caddy
+    restart: unless-stopped
+    ports:
+      - "1443:443"
+    volumes:
+      - ./caddyfile.docker:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
 
 volumes:
   mysql_data:
   redis_data:
   minio_data:
+  caddy_data:
+  caddy_config:

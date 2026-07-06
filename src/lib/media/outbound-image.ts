@@ -64,7 +64,7 @@ const logger = createScopedLogger({
 const NEXT_IMAGE_PATH = '/_next/image'
 const MAX_NEXT_IMAGE_UNWRAP_DEPTH = 6
 const SIGNED_URL_TTL_SECONDS = 3600
-const STORAGE_KEY_PREFIXES = ['images/', 'video/', 'voice/'] as const
+const STORAGE_KEY_PREFIXES = ['images/', 'video/', 'voice/', 'projects/'] as const
 const DEFAULT_CONTENT_TYPE = 'application/octet-stream'
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -390,6 +390,22 @@ export async function normalizeToBase64ForGeneration(input: string): Promise<str
   const normalizedUrl = await normalizeToOriginalMediaUrl(input)
   if (isDataUrl(normalizedUrl)) {
     return normalizedUrl
+  }
+
+  // Worker-side: đọc thẳng từ object storage thay vì self-fetch qua HTTP
+  // (http://127.0.0.1:3000/api/storage/sign → ECONNREFUSED trong container worker)
+  const { downloadMediaValueToBuffer, resolveCanonicalStorageKey } = await import('@/lib/media/download')
+  const storageKey = (await resolveCanonicalStorageKey(input))
+    || (await resolveCanonicalStorageKey(normalizedUrl))
+
+  if (storageKey) {
+    try {
+      const buffer = await downloadMediaValueToBuffer(storageKey)
+      const mimeType = guessContentType(storageKey, null, buffer)
+      return `data:${mimeType};base64,${buffer.toString('base64')}`
+    } catch {
+      // Fall through to HTTP fetch for edge cases (external URL, legacy refs)
+    }
   }
 
   const fetchUrl = await toFetchableAbsoluteUrl(normalizedUrl)

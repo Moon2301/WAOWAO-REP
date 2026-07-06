@@ -82,6 +82,7 @@ export default function StoryboardStage({
     setEditingPanel,
     modifyingPanels,
     isDownloadingImages,
+    isMergingVideos,
     previewImage,
     setPreviewImage,
     regeneratePanelImage,
@@ -91,6 +92,7 @@ export default function StoryboardStage({
     cancelPanelCandidate,
     getPanelCandidates,
     downloadAllImages,
+    mergeAllVideos,
     clearStoryboardError,
 
     assetPickerPanel,
@@ -153,12 +155,14 @@ export default function StoryboardStage({
           totalSegments={sortedStoryboards.length}
           totalPanels={totalPanels}
           isDownloadingImages={isDownloadingImages}
+          isMergingVideos={isMergingVideos}
           runningCount={runningCount}
           pendingPanelCount={pendingPanelCount}
           isBatchSubmitting={isEpisodeBatchSubmitting}
           addingStoryboardGroup={addingStoryboardGroup}
           addingStoryboardGroupState={addingStoryboardGroupState}
           onDownloadAllImages={downloadAllImages}
+          onMergeVideos={mergeAllVideos}
           onGenerateAllPanels={handleGenerateAllPanels}
           onAddStoryboardGroupAtStart={() => addStoryboardGroup(0)}
           onBack={onBack}

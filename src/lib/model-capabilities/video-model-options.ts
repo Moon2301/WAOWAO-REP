@@ -1,5 +1,4 @@
 import type { ModelCapabilities } from '@/lib/model-config-contract'
-
 interface VideoModelCapabilityCarrier {
   capabilities?: ModelCapabilities
 }

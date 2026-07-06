@@ -5,7 +5,8 @@
     "storyboard": "Storyboard",
     "video": "Video",
     "editor": "AI Editor",
-    "editorComingSoon": "Coming soon, follow us for updates"
+    "editorComingSoon": "Coming soon, follow us for updates",
+    "faceSwap": "Face Swap"
   },
   "buttons": {
     "assetLibrary": "Asset Library",
@@ -90,6 +91,7 @@
     "cancelConfirm": "Are you sure you want to cancel? Analyzed episodes will be cleared."
   },
   "storyInput": {
+    "placeholder": "Please enter your script or novel content...\n\nAI will intelligently analyze your text:\n• Automatically recognize scene transitions\n• Extract character dialogues and actions\n• Generate storyboard scripts\n\nExample:\nIn the early morning, sunlight pours into the room through the curtains. Xiao Ming rubs his sleepy eyes and sits up from the bed, casting a glance at the alarm clock by the head of the bed—it's already eight o'clock! He jumps out of bed in a hurry, scrambling to put on his clothes...\n",
     "currentEditing": "Currently editing: {name}",
     "editingTip": "The following workflow is for this episode only. Switch episodes in the top left if needed",
     "wordCount": "Word count:",

@@ -38,5 +38,8 @@
     "before": "No models configured yet. Please go to",
     "link": "Settings Center",
     "after": "to configure models, or customize them in project settings after creation."
+  },
+  "stages": {
+    "faceSwap": "Video Edit"
   }
 }

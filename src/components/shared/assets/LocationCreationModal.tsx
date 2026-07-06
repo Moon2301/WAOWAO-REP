@@ -2,7 +2,7 @@
 import { logError as _ulogError } from '@/lib/logging/core'
 
 import { useState, useEffect } from 'react'
-import { useTranslations } from 'next-intl'
+import { useLocale, useTranslations } from 'next-intl'
 import { AppIcon } from '@/components/ui/icons'
 import { ART_STYLES } from '@/lib/constants'
 import { shouldShowError } from '@/lib/error-utils'
@@ -48,6 +48,7 @@ export function LocationCreationModal({
     onSuccess
 }: LocationCreationModalProps) {
     const t = useTranslations('assetModal')
+    const locale = useLocale()
     const aiDesignAssetHubLocation = useAiDesignLocation()
     const createAssetHubLocation = useCreateAssetHubLocation()
     const generateAssetHubLocation = useGenerateLocationImage()
@@ -309,7 +310,7 @@ export function LocationCreationModal({
                                                 : 'glass-btn-soft border-[var(--glass-stroke-base)] text-[var(--glass-text-secondary)]'
                                                 }`}
                                         >
-                                            <span>{style.label}</span>
+                                            <span>{locale === 'en' ? style.labelEn : style.label}</span>
                                         </button>
                                     ))}
                                 </div>

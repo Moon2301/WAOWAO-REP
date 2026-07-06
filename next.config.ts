@@ -4,6 +4,7 @@ import createNextIntlPlugin from 'next-intl/plugin';
 const withNextIntl = createNextIntlPlugin('./src/i18n.ts');
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   // 已删除 ignoreBuildErrors / ignoreDuringBuilds，构建保持严格门禁
   // Next 15 的 allowedDevOrigins 是顶层配置，不属于 experimental
   allowedDevOrigins: [

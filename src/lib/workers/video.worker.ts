@@ -14,6 +14,7 @@ import {
   toSignedUrlIfCos,
   uploadVideoSourceToCos,
 } from './utils'
+import { handleVideoCharacterSwapTask } from './handlers/video-character-swap'
 import { normalizeToBase64ForGeneration } from '@/lib/media/outbound-image'
 import { resolveBuiltinCapabilitiesByModelKey } from '@/lib/model-capabilities/lookup'
 import { parseModelKeyStrict } from '@/lib/model-config-contract'
@@ -298,6 +299,26 @@ async function processVideoTask(job: Job<TaskJobData>) {
       return await handleVideoPanelTask(job)
     case TASK_TYPE.LIP_SYNC:
       return await handleLipSyncTask(job)
+    case TASK_TYPE.VIDEO_CHARACTER_SWAP:
+      return await handleVideoCharacterSwapTask(job)
+    case TASK_TYPE.VIDEO_CHARACTER_SWAP_CHUNK:
+      const { handleVideoCharacterSwapChunkTask } = await import('./handlers/video-character-swap-chunk')
+      return await handleVideoCharacterSwapChunkTask(job)
+    case TASK_TYPE.VIDEO_CHARACTER_SWAP_MERGE:
+      const { handleVideoCharacterSwapMergeTask } = await import('./handlers/video-character-swap-merge')
+      return await handleVideoCharacterSwapMergeTask(job)
+    case TASK_TYPE.VIDEO_FRAME_EXTRACT:
+      const { handleVideoFrameExtractTask } = await import('./handlers/video-frame-extract')
+      return await handleVideoFrameExtractTask(job)
+    case TASK_TYPE.VIDEO_FRAME_CLASSIFY:
+      const { handleVideoFrameClassifyTask } = await import('./handlers/video-frame-classify')
+      return await handleVideoFrameClassifyTask(job)
+    case TASK_TYPE.VIDEO_FRAME_PROCESS:
+      const { handleVideoFrameProcessTask } = await import('./handlers/video-frame-process')
+      return await handleVideoFrameProcessTask(job)
+    case TASK_TYPE.VIDEO_FRAME_MERGE:
+      const { handleVideoFrameMergeTask } = await import('./handlers/video-frame-merge')
+      return await handleVideoFrameMergeTask(job)
     default:
       throw new Error(`Unsupported video task type: ${job.data.type}`)
   }
