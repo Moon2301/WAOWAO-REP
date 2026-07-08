@@ -77,6 +77,15 @@ certificates
 # temporary files
 tmp/
 
+# scratch logs & temp snapshots (not for repo)
+full_logs.txt
+logs.txt
+logs2.txt
+recent_logs*.txt
+recent_changes.txt
+core.md
+check_merge.ts
+
 # internal AI agent config (not for public)
 AGENTS.md
 agent/
