@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type MutableRefObject } from 'react'
+import { loadVideoEditSessionRemote, saveVideoEditSessionRemote } from './useVideoEditPersistence'
 
 export type ExtractedFrame = {
   index: number
@@ -30,6 +31,49 @@ function sanitizeFrames<T extends { resultUrl?: string }>(frames: T[]): T[] {
   return frames.map((f) =>
     f.resultUrl && f.resultUrl.startsWith('data:') ? { ...f, resultUrl: undefined } : f,
   )
+}
+
+function isProcessedFrameJobActive(frame: ProcessedFrame): boolean {
+  if (frame.status === 'completed' || frame.status === 'failed' || frame.status === 'canceled') {
+    return false
+  }
+  if (frame.status === 'processing') return true
+  if (frame.status === 'queued') return Boolean(frame.taskId)
+  return false
+}
+
+function processedFramesMatchExtract(
+  frames: ProcessedFrame[],
+  frameKeys: string[],
+  extractTaskId: string,
+  aiSourceExtractTaskId: string,
+): boolean {
+  if (!extractTaskId || aiSourceExtractTaskId !== extractTaskId) return false
+  if (frames.length !== frameKeys.length || frameKeys.length === 0) return false
+  return frames.every((f) => {
+    const key = frameKeys[f.index]
+    return Boolean(key) && f.url === key
+  })
+}
+
+function clearFbfAiState(setters: {
+  setProcessedFrames: (v: ProcessedFrame[]) => void
+  setMergeTaskId: (v: string) => void
+  setResultVideoUrl: (v: string) => void
+  setAiSourceExtractTaskId: (v: string) => void
+  setIsGenerating: (v: boolean) => void
+  setIsMerging: (v: boolean) => void
+  setFramesWereRetried: (v: boolean) => void
+  generateInitiatedRef: MutableRefObject<boolean>
+}) {
+  setters.setProcessedFrames([])
+  setters.setMergeTaskId('')
+  setters.setResultVideoUrl('')
+  setters.setAiSourceExtractTaskId('')
+  setters.setIsGenerating(false)
+  setters.setIsMerging(false)
+  setters.setFramesWereRetried(false)
+  setters.generateInitiatedRef.current = false
 }
 
 export type FrameClassification = {
@@ -100,12 +144,76 @@ export function useFrameByFrameFlow(
   // Chặn restore kết quả cũ từ DB sau khi user đã thao tác (cắt lại / AI / reset).
   // Nếu không, project query resolve muộn sẽ đè URL cũ lên state vừa xóa.
   const persistedRestoreLockedRef = useRef(false)
+  const didHydrateFromStorageRef = useRef(false)
+  const didHydrateFromDbRef = useRef(false)
+  const dbSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const storageKey = `fbfState_${projectId}`
   const persistedResultVideoUrl = options?.persistedResultVideoUrl
   const onResultPersisted = options?.onResultPersisted
 
+  const applyFbfSessionFromData = useCallback((data: Record<string, unknown>) => {
+    if (data.extractTaskId) setExtractTaskId(data.extractTaskId as string)
+    if (data.extractCompleted) setExtractCompleted(data.extractCompleted as boolean)
+    if (data.extractMeta) setExtractMeta(data.extractMeta as FrameExtractMeta)
+    if (data.extractedFrames) setExtractedFrames(data.extractedFrames as ExtractedFrame[])
+    if (data.resultVideoUrl) setResultVideoUrl(data.resultVideoUrl as string)
+
+    const frameKeyCount = (data.extractMeta as FrameExtractMeta | undefined)?.frameKeys?.length ?? 0
+    const savedFrameKeys = ((data.extractMeta as FrameExtractMeta | undefined)?.frameKeys ?? []) as string[]
+    const rawClassifications = Array.isArray(data.frameClassifications) ? data.frameClassifications : []
+    if (frameKeyCount > 0 && data.extractCompleted) {
+      setFrameClassifications(normalizeFrameClassifications(frameKeyCount, rawClassifications as FrameClassification[]))
+    } else if (rawClassifications.length > 0) {
+      setFrameClassifications(rawClassifications as FrameClassification[])
+    }
+    const savedProcessed = Array.isArray(data.processedFrames) ? data.processedFrames : []
+    const processedFramesValid = processedFramesMatchExtract(
+      savedProcessed as ProcessedFrame[],
+      savedFrameKeys,
+      (data.extractTaskId as string) ?? '',
+      (data.aiSourceExtractTaskId as string) ?? '',
+    )
+
+    if (processedFramesValid) {
+      setProcessedFrames(sanitizeFrames(savedProcessed as ProcessedFrame[]))
+      if (data.mergeTaskId) setMergeTaskId(data.mergeTaskId as string)
+      if (data.aiSourceExtractTaskId) setAiSourceExtractTaskId(data.aiSourceExtractTaskId as string)
+      const hasResumableJobs = (savedProcessed as ProcessedFrame[]).some((f) => isProcessedFrameJobActive(f))
+      if (hasResumableJobs) {
+        generateInitiatedRef.current = true
+        setIsGenerating(true)
+      }
+    }
+
+    if (data.classifyTaskId && frameKeyCount > 0 && rawClassifications.length < frameKeyCount) {
+      setClassifyTaskId(data.classifyTaskId as string)
+      setIsClassifying(true)
+    } else if (data.classifyTaskId) {
+      setClassifyTaskId(data.classifyTaskId as string)
+    }
+  }, [])
+
+  const clearAiState = useCallback(() => {
+    clearFbfAiState({
+      setProcessedFrames,
+      setMergeTaskId,
+      setResultVideoUrl,
+      setAiSourceExtractTaskId,
+      setIsGenerating,
+      setIsMerging,
+      setFramesWereRetried,
+      generateInitiatedRef,
+    })
+    mergeStartedAtRef.current = null
+    mergeRetriedRef.current = false
+  }, [])
+
+  // Chỉ hydrate localStorage một lần khi mount — tránh ghi đè state sau cắt lại / Start AI
   useEffect(() => {
+    if (didHydrateFromStorageRef.current) return
+    didHydrateFromStorageRef.current = true
+
     try {
       const saved = localStorage.getItem(storageKey)
       if (!saved) {
@@ -114,43 +222,8 @@ export function useFrameByFrameFlow(
         }
         return
       }
-      const data = JSON.parse(saved)
-      if (data.extractTaskId) setExtractTaskId(data.extractTaskId)
-      if (data.extractCompleted) setExtractCompleted(data.extractCompleted)
-      if (data.extractMeta) setExtractMeta(data.extractMeta)
-      if (data.extractedFrames) setExtractedFrames(data.extractedFrames)
-      if (data.resultVideoUrl) setResultVideoUrl(data.resultVideoUrl)
-
-      const frameKeyCount = data.extractMeta?.frameKeys?.length ?? 0
-      const rawClassifications = Array.isArray(data.frameClassifications) ? data.frameClassifications : []
-      if (frameKeyCount > 0 && data.extractCompleted) {
-        setFrameClassifications(normalizeFrameClassifications(frameKeyCount, rawClassifications))
-      } else if (rawClassifications.length > 0) {
-        setFrameClassifications(rawClassifications)
-      }
-      const savedProcessed = Array.isArray(data.processedFrames) ? data.processedFrames : []
-      const processedFramesValid = frameKeyCount > 0
-        && savedProcessed.length === frameKeyCount
-        && data.aiSourceExtractTaskId
-        && data.aiSourceExtractTaskId === data.extractTaskId
-
-      if (processedFramesValid) {
-        setProcessedFrames(sanitizeFrames(savedProcessed))
-        if (data.mergeTaskId) setMergeTaskId(data.mergeTaskId)
-        const hasResumableJobs = savedProcessed.some(
-          (f: ProcessedFrame) => !f.status || f.status === 'queued' || f.status === 'processing',
-        )
-        if (hasResumableJobs) {
-          generateInitiatedRef.current = true
-        }
-      }
-
-      if (data.classifyTaskId && frameKeyCount > 0 && rawClassifications.length < frameKeyCount) {
-        setClassifyTaskId(data.classifyTaskId)
-        setIsClassifying(true)
-      } else if (data.classifyTaskId) {
-        setClassifyTaskId(data.classifyTaskId)
-      }
+      const data = JSON.parse(saved) as Record<string, unknown>
+      applyFbfSessionFromData(data)
 
       if (!data.resultVideoUrl && persistedResultVideoUrl && !persistedRestoreLockedRef.current) {
         setResultVideoUrl(persistedResultVideoUrl)
@@ -161,7 +234,40 @@ export function useFrameByFrameFlow(
         setResultVideoUrl(persistedResultVideoUrl)
       }
     }
-  }, [storageKey, persistedResultVideoUrl])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate once on mount
+  }, [storageKey])
+
+  // Hydrate từ DB nếu phiên server mới hơn localStorage
+  useEffect(() => {
+    if (!projectId || didHydrateFromDbRef.current) return
+    didHydrateFromDbRef.current = true
+
+    void (async () => {
+      try {
+        const dbSession = await loadVideoEditSessionRemote(projectId, 'fbf')
+        if (!dbSession || persistedRestoreLockedRef.current) return
+
+        const localRaw = localStorage.getItem(storageKey)
+        const localSession = localRaw ? JSON.parse(localRaw) as Record<string, unknown> : null
+        const dbUpdated = typeof dbSession.updatedAt === 'string'
+          ? new Date(dbSession.updatedAt).getTime()
+          : 0
+        const localUpdated = typeof localSession?.updatedAt === 'string'
+          ? new Date(localSession.updatedAt).getTime()
+          : 0
+        const localHasWork = Boolean(localSession?.extractTaskId || localSession?.extractCompleted)
+
+        if (dbUpdated > localUpdated || !localHasWork) {
+          applyFbfSessionFromData(dbSession)
+          if (!dbSession.resultVideoUrl && persistedResultVideoUrl) {
+            setResultVideoUrl(persistedResultVideoUrl)
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load FBF session from DB', e)
+      }
+    })()
+  }, [projectId, storageKey, applyFbfSessionFromData, persistedResultVideoUrl])
 
   useEffect(() => {
     if (!persistedResultVideoUrl || persistedRestoreLockedRef.current) return
@@ -180,13 +286,23 @@ export function useFrameByFrameFlow(
       aiSourceExtractTaskId,
       mergeTaskId,
       resultVideoUrl: resultVideoUrl.startsWith('data:') ? '' : resultVideoUrl,
+      updatedAt: new Date().toISOString(),
     }
     try {
       localStorage.setItem(storageKey, JSON.stringify(data))
     } catch {
       // Quota exceeded — bỏ qua, không để crash render
     }
-  }, [storageKey, extractTaskId, extractCompleted, extractMeta, extractedFrames, processedFrames, classifyTaskId, frameClassifications, aiSourceExtractTaskId, mergeTaskId, resultVideoUrl])
+
+    if (dbSaveTimerRef.current) clearTimeout(dbSaveTimerRef.current)
+    dbSaveTimerRef.current = setTimeout(() => {
+      void saveVideoEditSessionRemote(projectId, 'fbf', data).catch(() => {})
+    }, 2000)
+
+    return () => {
+      if (dbSaveTimerRef.current) clearTimeout(dbSaveTimerRef.current)
+    }
+  }, [projectId, storageKey, extractTaskId, extractCompleted, extractMeta, extractedFrames, processedFrames, classifyTaskId, frameClassifications, aiSourceExtractTaskId, mergeTaskId, resultVideoUrl])
 
   const startExtract = useCallback(async (videoUrl: string, targetFps: number) => {
     persistedRestoreLockedRef.current = true
@@ -194,17 +310,28 @@ export function useFrameByFrameFlow(
     setExtractCompleted(false)
     setExtractMeta(null)
     setExtractedFrames([])
-    setProcessedFrames([])
     setFrameClassifications([])
     setClassifyTaskId('')
-    setResultVideoUrl('')
-    setMergeTaskId('')
     setIsExtracting(true)
     setIsClassifying(false)
     setExtractProgress(0)
-    generateInitiatedRef.current = false
-    setAiSourceExtractTaskId('')
-    setFramesWereRetried(false)
+    clearAiState()
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({
+        extractTaskId: '',
+        extractCompleted: false,
+        extractMeta: null,
+        extractedFrames: [],
+        processedFrames: [],
+        classifyTaskId: '',
+        frameClassifications: [],
+        aiSourceExtractTaskId: '',
+        mergeTaskId: '',
+        resultVideoUrl: '',
+      }))
+    } catch {
+      // ignore quota
+    }
 
     const res = await fbfFetch('/api/video-frame-process', {
       method: 'POST',
@@ -225,7 +352,7 @@ export function useFrameByFrameFlow(
 
     const data = await res.json()
     setExtractTaskId(data.taskId)
-  }, [projectId])
+  }, [projectId, clearAiState, storageKey])
 
   useEffect(() => {
     if (!extractTaskId || !isExtracting) return
@@ -267,6 +394,7 @@ export function useFrameByFrameFlow(
           setFrameClassifications(
             frameKeys.map((_, index) => ({ index, hasCharacter: true, reason: 'default' })),
           )
+          clearAiState()
           setExtractCompleted(true)
           setIsExtracting(false)
           clearInterval(interval)
@@ -281,7 +409,7 @@ export function useFrameByFrameFlow(
     }, 2000)
 
     return () => clearInterval(interval)
-  }, [extractTaskId, isExtracting])
+  }, [extractTaskId, isExtracting, clearAiState])
 
   const startClassify = useCallback(async (params: {
     characterHint?: string
@@ -458,9 +586,7 @@ export function useFrameByFrameFlow(
   const detectCompleted = Boolean(classifyTaskId) && !isClassifying
   const processableFrameCount = normalizedClassifications.filter((c) => c.hasCharacter).length
   const hasActiveFrameJobs = aiSourceExtractTaskId === extractTaskId
-    && processedFrames.some(
-      (f) => !f.status || f.status === 'queued' || f.status === 'processing',
-    )
+    && processedFrames.some(isProcessedFrameJobActive)
   const frameSelectionReady = extractCompleted && frameCount > 0
   const classifyCompleted = frameSelectionReady
   const allFramesCompleted = processedFrames.length > 0
@@ -478,7 +604,7 @@ export function useFrameByFrameFlow(
   processedFramesRef.current = processedFrames
 
   const hasActiveFrames = processedFrames.length > 0
-    && processedFrames.some((f) => !f.status || f.status === 'queued' || f.status === 'processing')
+    && processedFrames.some(isProcessedFrameJobActive)
 
   useEffect(() => {
     if (processedFrames.length > 0 && !hasActiveFrames && isGenerating) {
@@ -491,7 +617,7 @@ export function useFrameByFrameFlow(
 
     const interval = setInterval(async () => {
       const current = processedFramesRef.current
-      const active = current.filter((f) => !f.status || f.status === 'queued' || f.status === 'processing')
+      const active = current.filter(isProcessedFrameJobActive)
       if (active.length === 0) return
 
       for (const frame of active) {
@@ -523,6 +649,58 @@ export function useFrameByFrameFlow(
 
     return () => clearInterval(interval)
   }, [hasActiveFrames])
+
+  const uploadFrameImage = useCallback(async (file: File): Promise<string> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await fbfFetch('/api/asset-hub/upload-temp', {
+      method: 'POST',
+      body: formData,
+    })
+    if (!res.ok) {
+      throw new Error('Upload ảnh thất bại')
+    }
+    const data = await res.json()
+    const key = (data.key || data.url || '') as string
+    return key.replace(/^\/+/, '')
+  }, [])
+
+  const replaceFrameResult = useCallback(async (frameIndex: number, file: File) => {
+    const frame = processedFramesRef.current.find((f) => f.index === frameIndex)
+    if (!frame) {
+      throw new Error('Không tìm thấy frame')
+    }
+    if (frame.status === 'queued' || frame.status === 'processing') {
+      throw new Error('Đợi frame xử lý xong trước khi thay ảnh')
+    }
+
+    const resultKey = await uploadFrameImage(file)
+
+    const res = await fbfFetch('/api/video-frame-process', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'replace_frame_result',
+        projectId,
+        frameIndex,
+        taskId: frame.taskId || undefined,
+        resultKey,
+      }),
+    })
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.message || 'Không thể lưu ảnh thay thế')
+    }
+
+    setProcessedFrames((prev) => prev.map((f) =>
+      f.index === frameIndex
+        ? { ...f, resultUrl: resultKey, status: 'completed', progress: 100, error: undefined }
+        : f,
+    ))
+    setResultVideoUrl('')
+    setFramesWereRetried(true)
+  }, [projectId, uploadFrameImage])
 
   const retryFrame = useCallback(async (
     frameIndex: number,
@@ -758,7 +936,7 @@ export function useFrameByFrameFlow(
     if (extractTaskId && isExtracting) taskIds.add(extractTaskId)
     if (classifyTaskId && isClassifying) taskIds.add(classifyTaskId)
     for (const frame of processedFramesRef.current) {
-      if (frame.taskId && (!frame.status || frame.status === 'queued' || frame.status === 'processing')) {
+      if (frame.taskId && isProcessedFrameJobActive(frame)) {
         taskIds.add(frame.taskId)
       }
     }
@@ -778,7 +956,7 @@ export function useFrameByFrameFlow(
     mergeStartedAtRef.current = null
     mergeRetriedRef.current = false
     setProcessedFrames((cur) => cur.map((f) =>
-      (!f.status || f.status === 'queued' || f.status === 'processing')
+      isProcessedFrameJobActive(f)
         ? { ...f, status: 'canceled', error: 'Đã dừng bởi người dùng' }
         : f,
     ))
@@ -807,6 +985,7 @@ export function useFrameByFrameFlow(
     mergeRetriedRef.current = false
     generateInitiatedRef.current = false
     localStorage.removeItem(storageKey)
+    void saveVideoEditSessionRemote(projectId, 'fbf', {}).catch(() => {})
     await clearPersistedResult()
   }, [storageKey, clearPersistedResult])
 
@@ -839,6 +1018,7 @@ export function useFrameByFrameFlow(
     startClassify,
     startGenerate,
     retryFrame,
+    replaceFrameResult,
     remergeVideo,
     mergeVideo,
     resetForReclassify,

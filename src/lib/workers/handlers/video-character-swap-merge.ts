@@ -127,7 +127,10 @@ export async function handleVideoCharacterSwapMergeTask(job: Job<TaskJobData>) {
       mimeType: 'video/mp4',
       sizeBytes: finalBuffer.length,
     })
-    await saveChunkResultVideoByMediaId(projectId, mediaRef.id)
+    await saveChunkResultVideoByMediaId(projectId, mediaRef.id, {
+      mergeTaskId: job.data.taskId,
+      chunkCount: chunkUrls.length,
+    })
     finalVideoUrlToReturn = mediaRef.url
 
     await reportTaskProgress(job, 100, { stage: 'completed', message: 'Final character swap video merged and ready for playback!' })

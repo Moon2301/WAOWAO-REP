@@ -39,6 +39,7 @@ export async function downloadMediaValueToBuffer(
     || value.startsWith('api/storage/sign')
     || value.startsWith('/api/files/')
     || value.startsWith('/m/')
+    || value.startsWith('/images/')
     || value.startsWith('/api/novel-promotion/')
 
   if (shouldFetch) {

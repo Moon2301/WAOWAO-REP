@@ -269,12 +269,29 @@ model NovelPromotionProject {
   fbfResultVideoMedia   MediaObject?              @relation("NovelPromotionProjectFbfResultVideo", fields: [fbfResultVideoMediaId], references: [id], onDelete: SetNull)
   chunkResultVideoMediaId String?
   chunkResultVideoMedia   MediaObject?              @relation("NovelPromotionProjectChunkResultVideo", fields: [chunkResultVideoMediaId], references: [id], onDelete: SetNull)
+  videoEditFbfSession     String?                   @db.Text
+  videoEditChunkSession   String?                   @db.Text
   characters      NovelPromotionCharacter[]
   episodes        NovelPromotionEpisode[]
   locations       NovelPromotionLocation[]
   project         Project                   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("novel_promotion_projects")
+}
+
+model VideoEditRender {
+  id           String   @id @default(uuid())
+  projectId    String
+  engine       String
+  videoMediaId String
+  meta         String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  videoMedia MediaObject @relation("VideoEditRenderMedia", fields: [videoMediaId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, engine, createdAt])
+  @@map("video_edit_renders")
 }
 
 model NovelPromotionShot {
@@ -363,6 +380,7 @@ model Project {
   updatedAt          DateTime               @default(now()) @updatedAt
   lastAccessedAt     DateTime?
   novelPromotionData NovelPromotionProject?
+  videoEditRenders     VideoEditRender[]
   user               User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
   usageCosts         UsageCost[]
 
@@ -986,6 +1004,7 @@ model MediaObject {
   globalVoiceCustomVoices               GlobalVoice[]               @relation("GlobalVoiceCustomVoiceMedia")
   novelPromotionProjectFbfResultVideos  NovelPromotionProject[]     @relation("NovelPromotionProjectFbfResultVideo")
   novelPromotionProjectChunkResultVideos NovelPromotionProject[]    @relation("NovelPromotionProjectChunkResultVideo")
+  videoEditRenders                       VideoEditRender[]          @relation("VideoEditRenderMedia")
 
   @@index([createdAt])
   @@map("media_objects")

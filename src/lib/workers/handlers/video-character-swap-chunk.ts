@@ -12,7 +12,7 @@ import {
   resolveVideoSourceFromGeneration,
   uploadVideoSourceToCos,
 } from '../utils'
-import { downloadMediaValueToBuffer } from '@/lib/media/download'
+import { downloadMediaValueToBuffer, resolveCanonicalStorageKey } from '@/lib/media/download'
 import { analyzeVideoToPrompt } from '@/lib/llm/video-analyze'
 import { getProviderConfig } from '@/lib/api-config'
 import { getProjectModelConfig } from '@/lib/config-service'
@@ -70,6 +70,19 @@ export async function handleVideoCharacterSwapChunkTask(job: Job<TaskJobData>) {
 
   if (!chunkOriginalUrl || !targetImageUrl || !modelId) {
     throw new Error('Thiếu tham số bắt buộc cho chunk: chunkOriginalUrl, targetImageUrl, hoặc modelId')
+  }
+
+  const passthrough = (job.data.payload as { passthrough?: boolean }).passthrough === true
+  if (passthrough) {
+    await reportTaskProgress(job, 100, {
+      stage: 'completed',
+      message: 'Skipped — using original chunk video (no character swap).',
+    })
+    const key = (await resolveCanonicalStorageKey(chunkOriginalUrl)) || chunkOriginalUrl.replace(/^\/+/, '')
+    return {
+      videoUrl: key,
+      passthrough: true,
+    }
   }
 
   await reportTaskProgress(job, 10, { stage: 'init', message: 'Starting chunk processing. Downloading original video chunk...' })

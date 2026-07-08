@@ -138,7 +138,11 @@ export async function handleVideoFrameMergeTask(job: Job<TaskJobData>) {
       sizeBytes: finalBuffer.length,
     })
 
-    await saveFbfResultVideoByMediaId(projectId, mediaRef.id)
+    await saveFbfResultVideoByMediaId(projectId, mediaRef.id, {
+      targetFps,
+      totalFrames,
+      mergeTaskId: job.data.taskId,
+    })
 
     await reportTaskProgress(job, 100, { stage: 'completed', message: 'Final video character swap merged and ready!' })
 

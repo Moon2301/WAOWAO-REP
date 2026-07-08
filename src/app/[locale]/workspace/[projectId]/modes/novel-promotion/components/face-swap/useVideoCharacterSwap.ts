@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
+import { loadVideoEditSessionRemote, saveVideoEditSessionRemote } from './useVideoEditPersistence'
 
 function normalizeUploadedMediaRef(value: string): string {
   if (!value) return value
@@ -28,6 +29,23 @@ export type FaceSwapChunk = SplitChunkInfo & {
   progress?: number
   resultVideoUrl?: string
   error?: string
+}
+
+export type ChunkClassification = {
+  index: number
+  hasCharacter: boolean
+  reason?: string
+}
+
+export function normalizeChunkClassifications(
+  count: number,
+  existing: ChunkClassification[],
+  defaultHasCharacter = true,
+): ChunkClassification[] {
+  return Array.from({ length: count }, (_, index) => {
+    const found = existing.find((item) => item.index === index)
+    return found ?? { index, hasCharacter: defaultHasCharacter, reason: 'default' }
+  })
 }
 
 export function useVideoCharacterSwap(
@@ -78,6 +96,7 @@ export function useVideoCharacterSwap(
 
   // ─── Generation Results (Phase 2) ───────────────────────────────────
   const [chunks, setChunks] = useState<FaceSwapChunk[]>([])
+  const [chunkClassifications, setChunkClassifications] = useState<ChunkClassification[]>([])
   const [mergeTaskId, setMergeTaskId] = useState<string>('')
   const [resultVideoUrl, setResultVideoUrl] = useState<string>('')
   const [error, setError] = useState<string>('')
@@ -96,9 +115,46 @@ export function useVideoCharacterSwap(
 
   // Chặn restore kết quả cũ từ DB sau khi user đã thao tác (split/generate/reset)
   const persistedRestoreLockedRef = useRef(false)
+  const didHydrateFromStorageRef = useRef(false)
+  const didHydrateFromDbRef = useRef(false)
+  const dbSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const applyChunkSessionFromData = useCallback((data: Record<string, unknown>) => {
+    if (data.modelId) setModelId(data.modelId as string)
+    if (data.prompt) setPrompt(data.prompt as string)
+    if (data.characterHint) setCharacterHint(data.characterHint as string)
+    if (data.resolution) setResolution(data.resolution as string)
+    if (data.artStyle) setArtStyle(data.artStyle as string)
+    if (data.chunkDuration) setChunkDuration(data.chunkDuration as number)
+    if (data.splitTaskId) setSplitTaskId(data.splitTaskId as string)
+    if (data.splitCompleted) setSplitCompleted(data.splitCompleted as boolean)
+    if (data.splitChunks) setSplitChunks(data.splitChunks as SplitChunkInfo[])
+    if (data.originalAudioUrl) setOriginalAudioUrl(data.originalAudioUrl as string)
+    if (data.originalDurationSec) setOriginalDurationSec(data.originalDurationSec as number)
+    if (data.baseChunkDuration) setBaseChunkDuration(data.baseChunkDuration as number)
+    if (data.uploadedVideoUrl) setUploadedVideoUrl(normalizeUploadedMediaRef(data.uploadedVideoUrl as string))
+    if (data.uploadedImageUrl) setUploadedImageUrl(normalizeUploadedMediaRef(data.uploadedImageUrl as string))
+    if (data.chunks) setChunks(data.chunks as FaceSwapChunk[])
+    if (Array.isArray(data.chunkClassifications)) {
+      setChunkClassifications(data.chunkClassifications as ChunkClassification[])
+    }
+    if (data.mergeTaskId) setMergeTaskId(data.mergeTaskId as string)
+    if (data.resultVideoUrl) setResultVideoUrl(data.resultVideoUrl as string)
+    if (data.settingsAtSplit) setSettingsAtSplit(data.settingsAtSplit as typeof settingsAtSplit)
+
+    if (data.videoFileName && data.uploadedVideoUrl) {
+      setSourceVideoFile(new File([], data.videoFileName as string, { type: 'video/mp4' }))
+    }
+    if (data.imageFileName && data.uploadedImageUrl) {
+      setTargetImageFile(new File([], data.imageFileName as string, { type: 'image/jpeg' }))
+    }
+  }, [])
 
   // On mount, load state from localStorage
   useEffect(() => {
+    if (didHydrateFromStorageRef.current) return
+    didHydrateFromStorageRef.current = true
+
     try {
       const saved = localStorage.getItem(storageKey)
       if (!saved) {
@@ -107,32 +163,8 @@ export function useVideoCharacterSwap(
         }
         return
       }
-      const data = JSON.parse(saved)
-      if (data.modelId) setModelId(data.modelId)
-      if (data.prompt) setPrompt(data.prompt)
-      if (data.characterHint) setCharacterHint(data.characterHint)
-      if (data.resolution) setResolution(data.resolution)
-      if (data.artStyle) setArtStyle(data.artStyle)
-      if (data.chunkDuration) setChunkDuration(data.chunkDuration)
-      if (data.splitTaskId) setSplitTaskId(data.splitTaskId)
-      if (data.splitCompleted) setSplitCompleted(data.splitCompleted)
-      if (data.splitChunks) setSplitChunks(data.splitChunks)
-      if (data.originalAudioUrl) setOriginalAudioUrl(data.originalAudioUrl)
-      if (data.originalDurationSec) setOriginalDurationSec(data.originalDurationSec)
-      if (data.baseChunkDuration) setBaseChunkDuration(data.baseChunkDuration)
-      if (data.uploadedVideoUrl) setUploadedVideoUrl(normalizeUploadedMediaRef(data.uploadedVideoUrl))
-      if (data.uploadedImageUrl) setUploadedImageUrl(normalizeUploadedMediaRef(data.uploadedImageUrl))
-      if (data.chunks) setChunks(data.chunks)
-      if (data.mergeTaskId) setMergeTaskId(data.mergeTaskId)
-      if (data.resultVideoUrl) setResultVideoUrl(data.resultVideoUrl)
-      if (data.settingsAtSplit) setSettingsAtSplit(data.settingsAtSplit)
-
-      if (data.videoFileName && data.uploadedVideoUrl) {
-        setSourceVideoFile(new File([], data.videoFileName, { type: 'video/mp4' }))
-      }
-      if (data.imageFileName && data.uploadedImageUrl) {
-        setTargetImageFile(new File([], data.imageFileName, { type: 'image/jpeg' }))
-      }
+      const data = JSON.parse(saved) as Record<string, unknown>
+      applyChunkSessionFromData(data)
 
       if (!data.resultVideoUrl && persistedResultVideoUrl && !persistedRestoreLockedRef.current) {
         setResultVideoUrl(persistedResultVideoUrl)
@@ -143,7 +175,39 @@ export function useVideoCharacterSwap(
         setResultVideoUrl(persistedResultVideoUrl)
       }
     }
-  }, [storageKey, persistedResultVideoUrl])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- hydrate once on mount
+  }, [storageKey])
+
+  useEffect(() => {
+    if (!projectId || didHydrateFromDbRef.current) return
+    didHydrateFromDbRef.current = true
+
+    void (async () => {
+      try {
+        const dbSession = await loadVideoEditSessionRemote(projectId, 'chunk')
+        if (!dbSession || persistedRestoreLockedRef.current) return
+
+        const localRaw = localStorage.getItem(storageKey)
+        const localSession = localRaw ? JSON.parse(localRaw) as Record<string, unknown> : null
+        const dbUpdated = typeof dbSession.updatedAt === 'string'
+          ? new Date(dbSession.updatedAt).getTime()
+          : 0
+        const localUpdated = typeof localSession?.updatedAt === 'string'
+          ? new Date(localSession.updatedAt).getTime()
+          : 0
+        const localHasWork = Boolean(localSession?.splitTaskId || localSession?.splitCompleted)
+
+        if (dbUpdated > localUpdated || !localHasWork) {
+          applyChunkSessionFromData(dbSession)
+          if (!dbSession.resultVideoUrl && persistedResultVideoUrl) {
+            setResultVideoUrl(persistedResultVideoUrl)
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load chunk session from DB', e)
+      }
+    })()
+  }, [projectId, storageKey, applyChunkSessionFromData, persistedResultVideoUrl])
 
   useEffect(() => {
     if (!persistedResultVideoUrl || persistedRestoreLockedRef.current) return
@@ -155,15 +219,25 @@ export function useVideoCharacterSwap(
     const data = {
       modelId, prompt, characterHint, resolution, artStyle, chunkDuration,
       splitTaskId, splitCompleted, splitChunks, originalAudioUrl, originalDurationSec, baseChunkDuration,
-      uploadedVideoUrl, uploadedImageUrl, chunks, mergeTaskId, resultVideoUrl, settingsAtSplit,
+      uploadedVideoUrl, uploadedImageUrl, chunks, chunkClassifications, mergeTaskId, resultVideoUrl, settingsAtSplit,
       videoFileName: sourceVideoFile?.name || '',
       imageFileName: targetImageFile?.name || '',
+      updatedAt: new Date().toISOString(),
     }
     localStorage.setItem(storageKey, JSON.stringify(data))
+
+    if (dbSaveTimerRef.current) clearTimeout(dbSaveTimerRef.current)
+    dbSaveTimerRef.current = setTimeout(() => {
+      void saveVideoEditSessionRemote(projectId, 'chunk', data).catch(() => {})
+    }, 2000)
+
+    return () => {
+      if (dbSaveTimerRef.current) clearTimeout(dbSaveTimerRef.current)
+    }
   }, [
-    storageKey, modelId, prompt, characterHint, resolution, artStyle, chunkDuration,
+    projectId, storageKey, modelId, prompt, characterHint, resolution, artStyle, chunkDuration,
     splitTaskId, splitCompleted, splitChunks, originalAudioUrl, originalDurationSec, baseChunkDuration,
-    uploadedVideoUrl, uploadedImageUrl, chunks, mergeTaskId, resultVideoUrl, settingsAtSplit,
+    uploadedVideoUrl, uploadedImageUrl, chunks, chunkClassifications, mergeTaskId, resultVideoUrl, settingsAtSplit,
     sourceVideoFile?.name, targetImageFile?.name
   ])
 
@@ -189,6 +263,7 @@ export function useVideoCharacterSwap(
       setSplitCompleted(false)
       setSplitChunks([])
       setChunks([])
+      setChunkClassifications([])
       setResultVideoUrl('')
       setMergeTaskId('')
 
@@ -243,7 +318,15 @@ export function useVideoCharacterSwap(
           setIsSplitting(false)
           setSplitCompleted(true)
           if (data.result) {
-            setSplitChunks(data.result.chunks || [])
+            const nextSplitChunks = data.result.chunks || []
+            setSplitChunks(nextSplitChunks)
+            setChunkClassifications(
+              nextSplitChunks.map((c: SplitChunkInfo) => ({
+                index: c.index,
+                hasCharacter: true,
+                reason: 'default',
+              })),
+            )
             setOriginalAudioUrl(data.result.originalAudioUrl || '')
             setOriginalDurationSec(data.result.originalDurationSec || 0)
             setBaseChunkDuration(data.result.baseChunkDuration || chunkDuration)
@@ -283,6 +366,11 @@ export function useVideoCharacterSwap(
         throw new Error('Target image is required')
       }
 
+      const resolvedClassifications = normalizeChunkClassifications(
+        splitChunks.length,
+        chunkClassifications,
+      )
+
       const res = await fetch(`/api/novel-promotion/${projectId}/video-character-swap`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -298,6 +386,8 @@ export function useVideoCharacterSwap(
           baseChunkDuration,
           originalAudioUrl,
           originalDurationSec,
+          filterCharacterChunks: true,
+          classifications: resolvedClassifications,
         })
       })
       
@@ -325,7 +415,26 @@ export function useVideoCharacterSwap(
       setIsGenerating(false)
       setIsUploading(false)
     }
-  }, [splitChunks, targetImageFile, uploadedImageUrl, projectId, modelId, prompt, resolution, artStyle, baseChunkDuration, originalAudioUrl, originalDurationSec])
+  }, [splitChunks, chunkClassifications, targetImageFile, uploadedImageUrl, projectId, modelId, prompt, resolution, artStyle, baseChunkDuration, originalAudioUrl, originalDurationSec, characterHint])
+
+  const toggleChunkClassification = useCallback((chunkIndex: number) => {
+    setChunkClassifications((prev) => {
+      const count = splitChunks.length || prev.length
+      const normalized = normalizeChunkClassifications(count, prev)
+      return normalized.map((c) =>
+        c.index === chunkIndex
+          ? { ...c, hasCharacter: !c.hasCharacter, reason: 'manual_override' }
+          : c,
+      )
+    })
+  }, [splitChunks.length])
+
+  const normalizedChunkClassifications = normalizeChunkClassifications(
+    splitChunks.length,
+    chunkClassifications,
+  )
+  const processableChunkCount = normalizedChunkClassifications.filter((c) => c.hasCharacter).length
+  const chunkSelectionReady = splitCompleted && splitChunks.length > 0 && chunks.length === 0
 
   // Keep a ref to chunks so the polling interval always sees latest state
   const chunksRef = useRef(chunks)
@@ -381,6 +490,54 @@ export function useVideoCharacterSwap(
   }, [hasActiveChunks, projectId])
 
   // ─── Retry Chunk ────────────────────────────────────────────────────
+  const uploadChunkVideo = useCallback(async (file: File): Promise<string> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await fetch('/api/asset-hub/upload-temp', {
+      method: 'POST',
+      body: formData,
+    })
+    if (!res.ok) throw new Error('Upload video thất bại')
+    const data = await res.json()
+    const key = (data.key || data.url || '') as string
+    return key.replace(/^\/+/, '')
+  }, [])
+
+  const replaceChunkResult = useCallback(async (chunkIndex: number, file: File) => {
+    const chunk = chunksRef.current.find((c) => c.index === chunkIndex)
+    if (!chunk) {
+      throw new Error('Không tìm thấy chunk')
+    }
+    if (chunk.status === 'queued' || chunk.status === 'processing') {
+      throw new Error('Đợi chunk xử lý xong trước khi thay video')
+    }
+
+    const resultKey = await uploadChunkVideo(file)
+
+    const res = await fetch(`/api/novel-promotion/${projectId}/video-character-swap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'replace_chunk_result',
+        chunkIndex,
+        taskId: chunk.taskId || undefined,
+        resultKey,
+      }),
+    })
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.message || 'Không thể lưu video thay thế')
+    }
+
+    setChunks((prev) => prev.map((c) =>
+      c.index === chunkIndex
+        ? { ...c, resultVideoUrl: resultKey, status: 'completed', progress: 100, error: undefined }
+        : c,
+    ))
+    setResultVideoUrl('')
+  }, [projectId, uploadChunkVideo])
+
   const retryChunk = useCallback(async (chunkIndex: number, chunkOriginalUrl: string, duration: number) => {
     try {
       setResultVideoUrl('')
@@ -530,10 +687,12 @@ export function useVideoCharacterSwap(
     setCharacterHint('')
     setProgress(0)
     setChunks([])
+    setChunkClassifications([])
     setOriginalAudioUrl('')
     setOriginalDurationSec(0)
     setSettingsAtSplit(null)
     localStorage.removeItem(storageKey)
+    void saveVideoEditSessionRemote(projectId, 'chunk', {}).catch(() => {})
     await clearPersistedResult()
   }, [storageKey, clearPersistedResult])
 
@@ -552,11 +711,12 @@ export function useVideoCharacterSwap(
     // Split results
     splitCompleted, splitChunks,
     // Generation results
-    chunks, progress, resultVideoUrl, setResultVideoUrl, error, setError,
+    chunks, chunkClassifications, progress, resultVideoUrl, setResultVideoUrl, error, setError,
     // Settings tracking
-    settingsChanged,
+    settingsChanged, processableChunkCount, chunkSelectionReady,
     uploadedVideoUrl, setUploadedVideoUrl, uploadedImageUrl, setUploadedImageUrl,
     // Actions
-    isBusy, uploadFile, startSplit, startGenerate, startMerge, stopAll, retryChunk, reset,
+    isBusy, uploadFile, startSplit, startGenerate, startMerge, stopAll, retryChunk, replaceChunkResult,
+    toggleChunkClassification, reset,
   }
 }

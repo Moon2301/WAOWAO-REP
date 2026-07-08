@@ -9,6 +9,7 @@ import { prisma } from '@/lib/prisma'
 import { resolveCanonicalStorageKey } from '@/lib/media/download'
 import { clearChunkResultVideo } from '@/lib/video-frame/fbf-result-persistence'
 import { snapVideoDurationForModel } from '@/lib/model-capabilities/video-duration-snap'
+import { TASK_STATUS } from '@/lib/task/types'
 
 function snapChunkDuration(modelId: string, duration: unknown, fallback = 5): number {
   const raw = typeof duration === 'number' && Number.isFinite(duration) ? duration : fallback
@@ -45,7 +46,20 @@ export const POST = apiHandler(async (
   // ─── Action: generate_chunks ────────────────────────────────────────
   // User reviewed the split, now submit chunk tasks for AI generation
   if (action === 'generate_chunks') {
-    const { chunks, targetImageUrl, modelId, prompt, characterHint, resolution, artStyle, baseChunkDuration, originalAudioUrl, originalDurationSec } = body
+    const {
+      chunks,
+      targetImageUrl,
+      modelId,
+      prompt,
+      characterHint,
+      resolution,
+      artStyle,
+      baseChunkDuration,
+      originalAudioUrl,
+      originalDurationSec,
+      classifications,
+      filterCharacterChunks,
+    } = body
     
     if (!chunks || !Array.isArray(chunks) || chunks.length === 0) {
       throw new ApiError('INVALID_PARAMS', { message: 'chunks array is required' })
@@ -64,6 +78,11 @@ export const POST = apiHandler(async (
     const snappedDuration = snapChunkDuration(modelId, baseChunkDuration, 5)
 
     for (const chunk of chunks) {
+      const classification = Array.isArray(classifications)
+        ? classifications.find((item: { index: number }) => item.index === chunk.index)
+        : undefined
+      const passthrough = filterCharacterChunks === true && classification?.hasCharacter === false
+
       const result = await submitTask({
         userId: session.user.id,
         locale,
@@ -86,6 +105,7 @@ export const POST = apiHandler(async (
           resolution: resolution || '1080p',
           aspectRatio: '16:9',
           artStyle,
+          passthrough,
         }, {}),
       })
       chunkTasks.push({ taskId: result.taskId, index: chunk.index })
@@ -138,6 +158,49 @@ export const POST = apiHandler(async (
       }, {}),
     })
     return NextResponse.json({ success: true, taskId: result.taskId, status: result.status })
+  }
+
+  // ─── Action: replace_chunk_result ─────────────────────────────────
+  if (action === 'replace_chunk_result') {
+    const { chunkIndex, resultKey, taskId } = body
+
+    if (typeof chunkIndex !== 'number' || chunkIndex < 0 || !resultKey) {
+      throw new ApiError('INVALID_PARAMS', { message: 'chunkIndex and resultKey are required' })
+    }
+
+    const normalizedKey = await normalizeTaskMediaUrl(resultKey, 'resultKey')
+
+    if (taskId) {
+      const task = await prisma.task.findUnique({
+        where: { id: taskId },
+        select: { id: true, userId: true, projectId: true, result: true },
+      })
+      if (!task || task.userId !== session.user.id || task.projectId !== projectId) {
+        throw new ApiError('FORBIDDEN', { message: 'Chunk task access denied' })
+      }
+
+      const prevResult = task.result && typeof task.result === 'object' && !Array.isArray(task.result)
+        ? task.result as Record<string, unknown>
+        : {}
+
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          status: TASK_STATUS.COMPLETED,
+          progress: 100,
+          errorCode: null,
+          errorMessage: null,
+          result: {
+            ...prevResult,
+            chunkIndex,
+            videoUrl: normalizedKey,
+            manualOverride: true,
+          },
+        },
+      })
+    }
+
+    return NextResponse.json({ success: true, resultKey: normalizedKey })
   }
 
   // ─── Action: clear_chunk_result ─────────────────────────────────────

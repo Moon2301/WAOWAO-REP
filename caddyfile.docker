@@ -1,0 +1,10 @@
+localhost {
+    log
+    handle /admin/queues* {
+        reverse_proxy app:3010
+    }
+    handle {
+        reverse_proxy app:3000
+    }
+    tls internal
+}

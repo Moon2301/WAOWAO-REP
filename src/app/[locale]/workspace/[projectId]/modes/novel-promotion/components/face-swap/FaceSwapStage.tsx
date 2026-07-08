@@ -5,7 +5,7 @@ import GlassSurface from '@/components/ui/primitives/GlassSurface'
 import GlassButton from '@/components/ui/primitives/GlassButton'
 import GlassTextarea from '@/components/ui/primitives/GlassTextarea'
 import GlassInput from '@/components/ui/primitives/GlassInput'
-import { useVideoCharacterSwap } from './useVideoCharacterSwap'
+import { useVideoCharacterSwap, normalizeChunkClassifications } from './useVideoCharacterSwap'
 import { useFrameByFrameFlow, normalizeFrameClassifications } from './useFrameByFrameFlow'
 import { AppIcon } from '@/components/ui/icons'
 import { useParams } from 'next/navigation'
@@ -18,6 +18,14 @@ import { ModelCapabilityDropdown } from '@/components/ui/config-modals/ModelCapa
 import { BackendLogViewer } from '@/components/ui/BackendLogViewer'
 import { resolvePlayableImageUrl, resolvePlayableVideoUrl } from '@/lib/media/playable-url'
 import { FBF_MAX_FRAMES } from './useFrameByFrameFlow'
+import {
+  DEFAULT_FBF_FRAME_NAMING,
+  formatFbfFrameFilename,
+  downloadFbfFramesZip,
+  type FbfFrameNamingOptions,
+} from '@/lib/video-frame/fbf-frame-utils'
+import { VideoEditRenderHistory } from './VideoEditRenderHistory'
+import { videoEditKeys } from './useVideoEditPersistence'
 
 export interface FaceSwapStageProps {
   initialEngine?: 'chunk' | 'fbf'
@@ -37,6 +45,8 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
   const persistedChunkResultUrl = projectQuery.data?.novelPromotionData?.chunkResultVideoUrl ?? null
   const invalidateProjectData = () => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.projectData(projectId) })
+    void queryClient.invalidateQueries({ queryKey: videoEditKeys.renders(projectId, 'fbf') })
+    void queryClient.invalidateQueries({ queryKey: videoEditKeys.renders(projectId, 'chunk') })
   }
   const userImageModels = userModelsQuery.data?.image || []
   const {
@@ -50,12 +60,13 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
     chunkDuration, setChunkDuration,
     isUploading, setIsUploading, isSplitting, isGenerating, isMerging,
     splitCompleted, splitChunks,
-    chunks, resultVideoUrl, setResultVideoUrl, error, setError,
-    settingsChanged,
+    chunks, chunkClassifications, resultVideoUrl, setResultVideoUrl, error, setError,
+    settingsChanged, processableChunkCount, chunkSelectionReady,
     uploadedVideoUrl, setUploadedVideoUrl,
     uploadedImageUrl, setUploadedImageUrl,
     isBusy: chunkBusy,
-    uploadFile, startSplit, startGenerate, startMerge, stopAll: stopChunkAll, retryChunk, reset
+    uploadFile, startSplit, startGenerate, startMerge, stopAll: stopChunkAll, retryChunk, replaceChunkResult,
+    toggleChunkClassification, reset
   } = useVideoCharacterSwap(projectVideoModel ?? undefined, {
     persistedResultVideoUrl: persistedChunkResultUrl,
     onResultPersisted: invalidateProjectData,
@@ -76,6 +87,31 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
   const [promptPreset, setPromptPreset] = useState<string>('face_swap')
   const [chunkMotionPreset, setChunkMotionPreset] = useState<string>('auto')
   const [customPrompt, setCustomPrompt] = useState<string>('')
+  const fbfNamingStorageKey = `fbfFrameNaming_${projectId}`
+  const [fbfFrameNaming, setFbfFrameNaming] = useState<FbfFrameNamingOptions>(() => {
+    if (typeof window === 'undefined') return DEFAULT_FBF_FRAME_NAMING
+    try {
+      const saved = localStorage.getItem(fbfNamingStorageKey)
+      if (saved) return { ...DEFAULT_FBF_FRAME_NAMING, ...JSON.parse(saved) }
+    } catch { /* ignore */ }
+    return DEFAULT_FBF_FRAME_NAMING
+  })
+  const [isDownloadingFbfFrames, setIsDownloadingFbfFrames] = useState(false)
+  const [replacingFbfFrameIndex, setReplacingFbfFrameIndex] = useState<number | null>(null)
+  const [replacingChunkIndex, setReplacingChunkIndex] = useState<number | null>(null)
+  const fbfReplaceInputRef = useRef<HTMLInputElement>(null)
+  const chunkReplaceInputRef = useRef<HTMLInputElement>(null)
+  const fbfReplaceTargetRef = useRef<number | null>(null)
+  const chunkReplaceTargetRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    localStorage.setItem(fbfNamingStorageKey, JSON.stringify(fbfFrameNaming))
+  }, [fbfFrameNaming, fbfNamingStorageKey])
+
+  const fbfNamingPreview = useMemo(
+    () => formatFbfFrameFilename(0, fbfFrameNaming, 'jpg'),
+    [fbfFrameNaming],
+  )
 
   useEffect(() => {
     if (projectArtStyle) setFbfArtStyle(projectArtStyle)
@@ -107,8 +143,9 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
     if (fbf.hasActiveFrameJobs) return 'Đang xử lý frame — đợi xong hoặc bấm Stop'
     if (fbf.isGenerating) return 'Đang khởi động AI...'
     if (!customPrompt.trim()) return 'Nhập prompt'
+    if (!fbf.canStartAi) return 'Không thể Start AI — thử cắt lại frame hoặc bấm Stop'
     return null
-  }, [fbf.extractCompleted, fbfModelId, fbf.processableFrameCount, fbf.hasActiveFrameJobs, fbf.isGenerating, customPrompt])
+  }, [fbf.extractCompleted, fbfModelId, fbf.processableFrameCount, fbf.hasActiveFrameJobs, fbf.isGenerating, fbf.canStartAi, customPrompt])
 
   useEffect(() => {
     if (promptPreset === 'custom') return
@@ -314,6 +351,136 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
   const getPlayableVideoUrl = (url: string) => resolvePlayableVideoUrl(url, projectId)
   const getPlayableImageUrl = (url: string) => resolvePlayableImageUrl(url, projectId)
 
+  const handleFbfReplacePick = (frameIndex: number) => {
+    fbfReplaceTargetRef.current = frameIndex
+    fbfReplaceInputRef.current?.click()
+  }
+
+  const handleFbfReplaceFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    const frameIndex = fbfReplaceTargetRef.current
+    e.target.value = ''
+    fbfReplaceTargetRef.current = null
+    if (!file || frameIndex === null) return
+
+    setReplacingFbfFrameIndex(frameIndex)
+    try {
+      await fbf.replaceFrameResult(frameIndex, file)
+      toast.success(`Đã thay ảnh frame #${frameIndex + 1}`)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Không thể thay ảnh'
+      toast.error(message)
+    } finally {
+      setReplacingFbfFrameIndex(null)
+    }
+  }
+
+  const handleChunkReplacePick = (chunkIndex: number) => {
+    chunkReplaceTargetRef.current = chunkIndex
+    chunkReplaceInputRef.current?.click()
+  }
+
+  const handleChunkReplaceFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    const chunkIndex = chunkReplaceTargetRef.current
+    e.target.value = ''
+    chunkReplaceTargetRef.current = null
+    if (!file || chunkIndex === null) return
+
+    setReplacingChunkIndex(chunkIndex)
+    try {
+      await replaceChunkResult(chunkIndex, file)
+      toast.success(`Đã thay video chunk #${chunkIndex + 1}`)
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Không thể thay video'
+      toast.error(message)
+    } finally {
+      setReplacingChunkIndex(null)
+    }
+  }
+
+  const handleDownloadFbfFrames = async (kind: 'original' | 'result') => {
+    const frames = kind === 'original'
+      ? fbf.extractedFrames.map((f) => ({ index: f.index, url: f.url }))
+      : fbf.processedFrames
+          .filter((f) => f.resultUrl)
+          .map((f) => ({ index: f.index, url: f.resultUrl! }))
+
+    if (frames.length === 0) {
+      toast.error(kind === 'original' ? 'Chưa có frame gốc' : 'Chưa có kết quả AI')
+      return
+    }
+
+    setIsDownloadingFbfFrames(true)
+    try {
+      const { downloaded, skipped } = await downloadFbfFramesZip({
+        frames,
+        naming: fbfFrameNaming,
+        zipFilename: kind === 'original' ? 'fbf_frames_original.zip' : 'fbf_frames_ai.zip',
+        resolveUrl: getPlayableImageUrl,
+      })
+      toast.success(`Đã tải ${downloaded} frame${skipped > 0 ? ` (${skipped} bỏ qua)` : ''}`)
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Tải frame thất bại')
+    } finally {
+      setIsDownloadingFbfFrames(false)
+    }
+  }
+
+  const renderFbfNamingSettings = () => (
+    <div className="rounded-lg border border-white/10 bg-black/20 p-3 space-y-3">
+      <div className="text-xs font-medium text-foreground/70">Đặt tên file khi tải (có thứ tự)</div>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        <label className="text-[11px] text-foreground/60 space-y-1">
+          Tiền tố
+          <GlassInput
+            value={fbfFrameNaming.prefix}
+            onChange={(e) => setFbfFrameNaming((n) => ({ ...n, prefix: e.target.value }))}
+            className="text-xs h-8"
+          />
+        </label>
+        <label className="text-[11px] text-foreground/60 space-y-1">
+          Hậu tố
+          <GlassInput
+            value={fbfFrameNaming.suffix}
+            onChange={(e) => setFbfFrameNaming((n) => ({ ...n, suffix: e.target.value }))}
+            className="text-xs h-8"
+          />
+        </label>
+        <label className="text-[11px] text-foreground/60 space-y-1">
+          Bắt đầu từ
+          <GlassInput
+            type="number"
+            min={0}
+            value={fbfFrameNaming.startIndex}
+            onChange={(e) => setFbfFrameNaming((n) => ({
+              ...n,
+              startIndex: Math.max(0, Number(e.target.value) || 0),
+            }))}
+            className="text-xs h-8"
+          />
+        </label>
+        <label className="text-[11px] text-foreground/60 space-y-1">
+          Số chữ số
+          <GlassInput
+            type="number"
+            min={1}
+            max={8}
+            value={fbfFrameNaming.padDigits}
+            onChange={(e) => setFbfFrameNaming((n) => ({
+              ...n,
+              padDigits: Math.min(8, Math.max(1, Number(e.target.value) || 4)),
+            }))}
+            className="text-xs h-8"
+          />
+        </label>
+      </div>
+      <p className="text-[10px] text-foreground/50">
+        Ví dụ frame đầu: <span className="font-mono text-foreground/70">{fbfNamingPreview}</span>
+      </p>
+    </div>
+  )
+
   const selectedModelConfig = userVideoModels?.find(m => m.value === modelId)
   const durationOptions = selectedModelConfig?.capabilities?.video?.durationOptions
 
@@ -327,6 +494,25 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
   }, [userVideoModels])
 
   const allChunksCompleted = chunks.length > 0 && chunks.every(c => c.status === 'completed' && c.resultVideoUrl)
+
+  const chunkDisplayClassifications = useMemo(
+    () => normalizeChunkClassifications(splitChunks.length, chunkClassifications),
+    [splitChunks.length, chunkClassifications],
+  )
+
+  const handleChunkGenerate = async () => {
+    try {
+      await startGenerate()
+      const skipCount = splitChunks.length - processableChunkCount
+      toast.success(
+        skipCount > 0
+          ? `Đã bắt đầu: ${processableChunkCount} chunk SWAP, ${skipCount} chunk SKIP`
+          : `Đã bắt đầu xử lý ${processableChunkCount} chunk`,
+      )
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Không thể bắt đầu generate')
+    }
+  }
 
   return (
     <div className="flex flex-col h-full max-w-6xl mx-auto p-6 space-y-6 animate-fade-in pb-20">
@@ -631,7 +817,7 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
                 <GlassButton 
                   variant="primary"
                   size="lg" 
-                  onClick={startGenerate} 
+                  onClick={() => void handleChunkGenerate()} 
                   disabled={(!uploadedImageUrl && !targetImageFile) || isGenerating || chunks.length > 0}
                   className="w-full md:w-auto min-w-[200px]"
                 >
@@ -641,7 +827,7 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
                       Starting AI...
                     </span>
                   ) : (
-                    'Generate Character Swap'
+                    `Generate (${processableChunkCount} SWAP)`
                   )}
                 </GlassButton>
               )}
@@ -651,24 +837,44 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
           {/* Original Chunks — luôn hiển thị sau khi split để so sánh với AI result */}
           {splitCompleted && splitChunks.length > 0 && (
             <GlassSurface className="p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
                 <AppIcon name="video" className="w-5 h-5 text-primary" />
                 {chunks.length > 0 ? `Original Chunks (${splitChunks.length})` : `Review Split Chunks (${splitChunks.length} chunks)`}
               </h3>
+              {chunkSelectionReady && (
+                <p className="text-xs text-foreground/50 mb-4">
+                  Mặc định tất cả chunk là SWAP. Bấm badge để đổi SKIP trước khi Generate.
+                </p>
+              )}
+              {!chunkSelectionReady && <div className="mb-4" />}
               <div className="overflow-x-auto pb-4">
                 <div className="flex gap-4 min-w-max">
-                  {splitChunks.map((chunk) => (
+                  {splitChunks.map((chunk) => {
+                    const classification = chunkDisplayClassifications.find((c) => c.index === chunk.index)
+                    return (
                     <div key={`split-${chunk.index}`} className="flex flex-col gap-2 w-64">
-                      <div className="text-sm font-medium flex justify-between">
+                      <div className="text-sm font-medium flex justify-between items-center gap-2">
                         <span>Chunk {chunk.index + 1}</span>
-                        <span className="text-foreground/50">{chunk.duration.toFixed(2)}s</span>
+                        <div className="flex items-center gap-2">
+                          {chunkSelectionReady && classification ? (
+                            <button
+                              type="button"
+                              title={classification.reason || 'Bấm để đổi SWAP/SKIP'}
+                              onClick={() => toggleChunkClassification(chunk.index)}
+                              className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer hover:opacity-80 ${classification.hasCharacter ? 'bg-green-500/30 text-green-300' : 'bg-white/10 text-foreground/50'}`}
+                            >
+                              {classification.hasCharacter ? 'SWAP' : 'SKIP'}
+                            </button>
+                          ) : null}
+                          <span className="text-foreground/50">{chunk.duration.toFixed(2)}s</span>
+                        </div>
                       </div>
                       <div className="bg-black/40 rounded border border-white/10 aspect-video relative overflow-hidden group">
                         <div className="absolute top-1 left-1 bg-black/60 text-[10px] px-1.5 py-0.5 rounded text-white/80 z-10">Original</div>
                         <video src={getPlayableVideoUrl(chunk.originalUrl)} className="w-full h-full object-cover" controls preload="metadata" />
                       </div>
                     </div>
-                  ))}
+                  )})}
                 </div>
               </div>
             </GlassSurface>
@@ -677,12 +883,26 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
           {/* Phase 2 Results: Chunks Generation & Merge */}
           {chunks.length > 0 && (
             <GlassSurface className="p-6">
+              <input
+                ref={chunkReplaceInputRef}
+                type="file"
+                accept="video/mp4,video/quicktime,video/webm"
+                className="hidden"
+                onChange={handleChunkReplaceFile}
+              />
               <div className="space-y-6">
                 <div className="flex justify-between items-center">
-                  <h3 className="text-lg font-semibold flex items-center gap-2">
-                    <AppIcon name="video" className="w-5 h-5 text-primary" />
-                    {allChunksCompleted ? 'All chunks generated successfully' : 'Processing AI Generation'}
-                  </h3>
+                  <div>
+                    <h3 className="text-lg font-semibold flex items-center gap-2">
+                      <AppIcon name="video" className="w-5 h-5 text-primary" />
+                      {allChunksCompleted ? 'All chunks generated successfully' : 'Processing AI Generation'}
+                    </h3>
+                    {allChunksCompleted && (
+                      <p className="text-xs text-foreground/50 mt-1">
+                        Có thể &quot;Thay video&quot; thủ công từng chunk — nhớ Ghép lại sau khi sửa.
+                      </p>
+                    )}
+                  </div>
                   
                   <GlassButton 
                     variant="primary" 
@@ -702,9 +922,33 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
                   <div className="flex gap-4 min-w-max">
                     {[...chunks].sort((a, b) => a.index - b.index).map((chunk) => (
                       <div key={chunk.taskId} className="flex flex-col gap-2 w-64">
-                        <div className="text-sm font-medium flex justify-between">
-                          <span>Chunk {chunk.index + 1}</span>
-                          <span className="text-foreground/50">{chunk.duration.toFixed(2)}s</span>
+                        <div className="text-sm font-medium flex justify-between items-start gap-2">
+                          <div className="flex flex-col">
+                            <span>Chunk {chunk.index + 1} · AI</span>
+                            <span className="text-foreground/50 text-xs">{chunk.duration.toFixed(2)}s</span>
+                          </div>
+                          <div className="flex flex-col items-end gap-0.5">
+                            {(chunk.status === 'completed' || chunk.status === 'failed' || chunk.status === 'canceled') && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="text-[10px] text-primary hover:underline disabled:opacity-40"
+                                  disabled={replacingChunkIndex !== null || isMerging}
+                                  onClick={() => handleChunkReplacePick(chunk.index)}
+                                >
+                                  {replacingChunkIndex === chunk.index ? '...' : 'Thay video'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-[10px] text-primary hover:underline disabled:opacity-40"
+                                  disabled={replacingChunkIndex !== null || isMerging}
+                                  onClick={() => retryChunk(chunk.index, chunk.originalUrl, chunk.duration)}
+                                >
+                                  Tạo lại
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
                         
                         {/* Generated Chunk */}
@@ -712,19 +956,7 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
                           <div className="absolute top-1 left-1 bg-black/60 text-[10px] px-1.5 py-0.5 rounded text-white/80 z-10">AI Result</div>
                           
                           {chunk.resultVideoUrl ? (
-                            <>
-                              <video src={getPlayableVideoUrl(chunk.resultVideoUrl)} className="w-full h-full object-cover" controls preload="metadata" autoPlay loop muted />
-                              <div className="absolute bottom-2 right-2 z-10">
-                                <GlassButton
-                                  variant="secondary"
-                                  size="sm"
-                                  disabled={chunk.status === 'queued' || chunk.status === 'processing'}
-                                  onClick={() => retryChunk(chunk.index, chunk.originalUrl, chunk.duration)}
-                                >
-                                  Tạo lại
-                                </GlassButton>
-                              </div>
-                            </>
+                            <video src={getPlayableVideoUrl(chunk.resultVideoUrl)} className="w-full h-full object-cover" controls preload="metadata" autoPlay loop muted />
                           ) : (chunk.status === 'failed' || chunk.status === 'canceled') ? (
                             <div className="text-red-400 text-sm flex flex-col items-center gap-2 p-2 text-center">
                               <AppIcon name="alert" className="w-6 h-6" />
@@ -1010,9 +1242,10 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
                     Đang xử lý AI — có thể &quot;Tạo lại&quot; từng frame khi xong.
                   </p>
                 )}
-                {fbf.allFramesCompleted && !fbf.isMerging && !fbf.resultVideoUrl && (
+                {fbf.allFramesCompleted && !fbf.isMerging && (
                   <p className="text-xs text-emerald-500/90 text-right">
-                    AI xong — bấm &quot;Ghép video (Bước 4)&quot; để tạo video cuối.
+                    {!fbf.resultVideoUrl && 'AI xong — bấm Ghép video (Bước 4). '}
+                    Có thể &quot;Thay ảnh&quot; thủ công từng frame — nhớ Ghép lại sau khi sửa.
                   </p>
                 )}
               </div>
@@ -1021,12 +1254,42 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
 
           {fbf.extractCompleted && fbf.extractedFrames.length > 0 && (
             <GlassSurface className="p-6">
-              <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <AppIcon name="image" className="w-5 h-5 text-primary" />
-                {fbf.processedFrames.length > 0
-                  ? `Original Frames (${fbf.extractedFrames.length})`
-                  : `Preview Extracted Frames (${fbf.extractedFrames.length} frames @ ${targetFps} FPS)`}
-              </h3>
+              <input
+                ref={fbfReplaceInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handleFbfReplaceFile}
+              />
+              <div className="flex flex-col gap-4 mb-4">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <AppIcon name="image" className="w-5 h-5 text-primary" />
+                  {fbf.processedFrames.length > 0
+                    ? `Original Frames (${fbf.extractedFrames.length})`
+                    : `Preview Extracted Frames (${fbf.extractedFrames.length} frames @ ${targetFps} FPS)`}
+                </h3>
+                {renderFbfNamingSettings()}
+                <div className="flex flex-wrap gap-2 justify-end">
+                  <GlassButton
+                    variant="secondary"
+                    size="sm"
+                    disabled={isDownloadingFbfFrames}
+                    onClick={() => void handleDownloadFbfFrames('original')}
+                  >
+                    {isDownloadingFbfFrames ? 'Đang tải...' : 'Tải frame gốc (.zip)'}
+                  </GlassButton>
+                  {fbf.processedFrames.some((f) => f.resultUrl) && (
+                    <GlassButton
+                      variant="secondary"
+                      size="sm"
+                      disabled={isDownloadingFbfFrames}
+                      onClick={() => void handleDownloadFbfFrames('result')}
+                    >
+                      {isDownloadingFbfFrames ? 'Đang tải...' : 'Tải kết quả AI (.zip)'}
+                    </GlassButton>
+                  )}
+                </div>
+              </div>
               {fbf.extractCompleted && fbf.processedFrames.length === 0 && (
                 <p className="text-xs text-foreground/50 mb-3">
                   Mặc định tất cả frame là SWAP. Bấm badge để đổi SKIP trước khi Start AI. Detect là tùy chọn.
@@ -1086,23 +1349,54 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
                       <div key={frame.taskId || frame.index} className="flex flex-col gap-2 w-28">
                         <div className="text-xs font-medium text-foreground/70 flex justify-between items-center gap-1">
                           <span>#{frame.index + 1} · AI</span>
-                          {(frame.status === 'completed' || frame.status === 'failed' || frame.status === 'canceled') && (
-                            <button
-                              type="button"
-                              className="text-[9px] text-primary hover:underline disabled:opacity-40"
-                              onClick={() => handleRetryFbfFrame(frame.index)}
-                            >
-                              Tạo lại
-                            </button>
-                          )}
+                          <div className="flex flex-col items-end gap-0.5">
+                            {(frame.status === 'completed' || frame.status === 'failed' || frame.status === 'canceled') && (
+                              <>
+                                <button
+                                  type="button"
+                                  className="text-[9px] text-primary hover:underline disabled:opacity-40"
+                                  disabled={replacingFbfFrameIndex !== null || fbf.isMerging}
+                                  onClick={() => handleFbfReplacePick(frame.index)}
+                                >
+                                  {replacingFbfFrameIndex === frame.index ? '...' : 'Thay ảnh'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className="text-[9px] text-primary hover:underline disabled:opacity-40"
+                                  onClick={() => handleRetryFbfFrame(frame.index)}
+                                >
+                                  Tạo lại
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <div className="bg-black/40 rounded border border-white/10 aspect-[9/16] relative overflow-hidden">
+                        <div className="bg-black/40 rounded border border-white/10 aspect-[9/16] relative overflow-hidden group">
                           {frame.resultUrl ? (
-                            /* eslint-disable-next-line @next/next/no-img-element */
-                            <img src={getPlayableImageUrl(frame.resultUrl)} alt={`Result ${frame.index + 1}`} className="w-full h-full object-cover" />
+                            <>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={getPlayableImageUrl(frame.resultUrl)} alt={`Result ${frame.index + 1}`} className="w-full h-full object-cover" />
+                              <button
+                                type="button"
+                                title="Thay ảnh thủ công"
+                                disabled={replacingFbfFrameIndex !== null || fbf.isMerging}
+                                onClick={() => handleFbfReplacePick(frame.index)}
+                                className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] text-white transition-opacity disabled:hidden"
+                              >
+                                Thay ảnh
+                              </button>
+                            </>
                           ) : (frame.status === 'failed' || frame.status === 'canceled') ? (
                             <div className="w-full h-full flex flex-col items-center justify-center text-red-400 text-xs p-1 text-center gap-1">
                               <span className="line-clamp-2">{frame.error || 'Failed'}</span>
+                              <button
+                                type="button"
+                                className="text-[9px] text-primary hover:underline"
+                                disabled={replacingFbfFrameIndex !== null}
+                                onClick={() => handleFbfReplacePick(frame.index)}
+                              >
+                                Thay ảnh
+                              </button>
                             </div>
                           ) : (
                             <div className="w-full h-full flex flex-col items-center justify-center gap-1">
@@ -1198,6 +1492,12 @@ export default function FaceSwapStage({ initialEngine = 'chunk' }: FaceSwapStage
         </GlassSurface>
         )
       })()}
+
+      <VideoEditRenderHistory
+        projectId={projectId}
+        engine={engine}
+        engineLabel={engine === 'fbf' ? 'Frame-by-frame' : 'Chunk'}
+      />
     </div>
   )
 }

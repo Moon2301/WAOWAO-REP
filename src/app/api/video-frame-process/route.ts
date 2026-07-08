@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { requireUserAuth, isErrorResponse } from '@/lib/api-auth'
 import { prisma } from '@/lib/prisma'
-import { TASK_TYPE } from '@/lib/task/types'
+import { TASK_TYPE, TASK_STATUS } from '@/lib/task/types'
 import { submitTask } from '@/lib/task/submitter'
 import { resolveRequiredTaskLocale } from '@/lib/task/resolve-locale'
 import { withTaskUiPayload } from '@/lib/task/ui-payload'
@@ -95,6 +95,14 @@ const remergeFramesSchema = z.object({
 const clearFbfResultSchema = z.object({
   action: z.literal('clear_fbf_result'),
   projectId: z.string(),
+})
+
+const replaceFrameResultSchema = z.object({
+  action: z.literal('replace_frame_result'),
+  projectId: z.string(),
+  frameIndex: z.number().int().min(0),
+  resultKey: z.string().min(1),
+  taskId: z.string().optional(),
 })
 
 const legacySchema = z.object({
@@ -304,6 +312,54 @@ export const POST = apiHandler(async (req: NextRequest) => {
       success: true,
       taskId: data.mergeTaskId,
     })
+  }
+
+  if (body?.action === 'replace_frame_result') {
+    const parsed = replaceFrameResultSchema.safeParse(body)
+    if (!parsed.success) {
+      throw new ApiError('INVALID_PARAMS', { message: 'Invalid replace_frame_result request' })
+    }
+
+    const data = parsed.data
+    await assertProjectAccess(data.projectId, user.id)
+
+    const resultKey = await resolveCanonicalStorageKey(data.resultKey)
+    if (!resultKey) {
+      throw new ApiError('INVALID_PARAMS', { message: 'Invalid resultKey' })
+    }
+
+    if (data.taskId) {
+      const task = await prisma.task.findUnique({
+        where: { id: data.taskId },
+        select: { id: true, userId: true, projectId: true, result: true },
+      })
+      if (!task || task.userId !== user.id || task.projectId !== data.projectId) {
+        throw new ApiError('FORBIDDEN', { message: 'Frame task access denied' })
+      }
+
+      const prevResult = task.result && typeof task.result === 'object' && !Array.isArray(task.result)
+        ? task.result as Record<string, unknown>
+        : {}
+
+      await prisma.task.update({
+        where: { id: data.taskId },
+        data: {
+          status: TASK_STATUS.COMPLETED,
+          progress: 100,
+          errorCode: null,
+          errorMessage: null,
+          result: {
+            ...prevResult,
+            frameIndex: data.frameIndex,
+            processedFrameKey: resultKey,
+            processedImageUrl: resultKey,
+            manualOverride: true,
+          },
+        },
+      })
+    }
+
+    return NextResponse.json({ success: true, resultKey })
   }
 
   if (body?.action === 'clear_fbf_result') {
